@@ -93,59 +93,66 @@ original_completions_create = chat.Completions.create
 
 @functools.wraps(original_completions_create)
 def logged_completions_create(self, *args, **kwargs):
-    logger.debug(
-        "completions.Completions.create called with args: %s, kwargs: %s", args, kwargs
-    )
-
-    ### AST Stuff
-    symbolic_mappings = []
-    # Get the caller's source code one level up the stack.
-    # source_code = utils.get_caller_source()
-    # if source_code:
-    #     messages = kwargs.get("messages", [])
-    #     symbolic_mappings, regex_count = get_symbolic_mappings(source_code, messages)
-    # else:
-    #     logger.debug("No caller source available.")
-
     # Make the original call
     result = original_completions_create(self, *args, **kwargs)
+    try:
+        logger.debug(
+            "completions.Completions.create called with args: %s, kwargs: %s",
+            args,
+            kwargs,
+        )
 
-    # Get stack frame info
-    caller_frame = inspect.currentframe().f_back
-    frame_info = inspect.getframeinfo(caller_frame, context=20)
-    caller_function_name = caller_frame.f_code.co_name
-    print(f"caller_function_name: {caller_function_name}, {type(caller_function_name)}")
-    # logger.info("completions.Completions.create returned: %s", result)
-    logged_data = {
-        "messages": kwargs.get("messages", []),
-        "response_texts": [choice.message.content for choice in result.choices],
-        "symbolic_mappings": symbolic_mappings,
-        "response": result.to_dict(),
-        "usage": result.usage.to_dict(),
-        "timestamp": int(time.time()),
-        "stack_info": {
-            "filename": frame_info.filename,
-            "lineno": frame_info.lineno,
-            "code_context": (
-                frame_info.code_context if frame_info.code_context else ""
-            ),
-            "caller_function_name": caller_frame.f_code.co_name,
-        },
-        "call_parameters": {
-            "model": kwargs.get("model", ""),
-            "temperature": kwargs.get("temperature", 0),
-            "max_tokens": kwargs.get("max_tokens", 0),
-            "top_p": kwargs.get("top_p", 0),
-            "frequency_penalty": kwargs.get("frequency_penalty", 0),
-            "presence_penalty": kwargs.get("presence_penalty", 0),
-            "stop": kwargs.get("stop", []),
-        },
-        "extra_info": {
-            **kwargs.get("extra_headers", {}),
-        },
-    }
-    write_logged_data(logged_data, output_file_name)
-    return result
+        ### AST Stuff
+        symbolic_mappings = []
+        # Get the caller's source code one level up the stack.
+        # source_code = utils.get_caller_source()
+        # if source_code:
+        #     messages = kwargs.get("messages", [])
+        #     symbolic_mappings, regex_count = get_symbolic_mappings(source_code, messages)
+        # else:
+        #     logger.debug("No caller source available.")
+
+        # Get stack frame info
+        caller_frame = inspect.currentframe().f_back
+        frame_info = inspect.getframeinfo(caller_frame, context=20)
+        caller_function_name = caller_frame.f_code.co_name
+        print(
+            f"caller_function_name: {caller_function_name}, {type(caller_function_name)}"
+        )
+        # logger.info("completions.Completions.create returned: %s", result)
+        logged_data = {
+            "messages": kwargs.get("messages", []),
+            "response_texts": [choice.message.content for choice in result.choices],
+            "symbolic_mappings": symbolic_mappings,
+            "response": result.to_dict(),
+            "usage": result.usage.to_dict(),
+            "timestamp": int(time.time()),
+            "stack_info": {
+                "filename": frame_info.filename,
+                "lineno": frame_info.lineno,
+                "code_context": (
+                    frame_info.code_context if frame_info.code_context else ""
+                ),
+                "caller_function_name": caller_frame.f_code.co_name,
+            },
+            "call_parameters": {
+                "model": kwargs.get("model", ""),
+                "temperature": kwargs.get("temperature", 0),
+                "max_tokens": kwargs.get("max_tokens", 0),
+                "top_p": kwargs.get("top_p", 0),
+                "frequency_penalty": kwargs.get("frequency_penalty", 0),
+                "presence_penalty": kwargs.get("presence_penalty", 0),
+                "stop": kwargs.get("stop", []),
+            },
+            "extra_info": {
+                **kwargs.get("extra_headers", {}),
+            },
+        }
+        write_logged_data(logged_data, output_file_name)
+    except Exception as e:
+        logger.error("Error in logged_completions_create: %s", e)
+    finally:
+        return result
 
 
 chat.Completions.create = logged_completions_create

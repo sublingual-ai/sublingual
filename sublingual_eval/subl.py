@@ -19,6 +19,10 @@ from openai.resources.chat import chat
 # Import our AST parsing utilities.
 from sublingual_eval.abstract import utils
 
+import uuid
+import contextvars
+
+
 # Set up logging.
 logger = logging.getLogger("sublingual")
 logger.setLevel(logging.DEBUG)
@@ -29,6 +33,16 @@ if not os.path.exists(subl_logs_path):
     os.makedirs(subl_logs_path)
 
 output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
+
+
+# Make FastAPI imports optional
+try:
+    from fastapi import FastAPI
+    from fastapi.routing import APIRoute
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
+    logger.debug("FastAPI not available - skipping FastAPI integration")
 
 
 def write_logged_data(logged_data, file_name):
@@ -88,6 +102,9 @@ def get_symbolic_mappings(source_code, messages):
     return mapping_list, len(token_lists)
 
 
+# Define a context variable to store the request id
+request_id_ctx_var = contextvars.ContextVar("request_id", default=None)
+
 original_completions_create = chat.Completions.create
 
 
@@ -96,6 +113,9 @@ def logged_completions_create(self, *args, **kwargs):
     # Make the original call
     result = original_completions_create(self, *args, **kwargs)
     try:
+        logger.debug(
+            request_id_ctx_var.get()
+        )
         logger.debug(
             "completions.Completions.create called with args: %s, kwargs: %s",
             args,
@@ -121,6 +141,7 @@ def logged_completions_create(self, *args, **kwargs):
         )
         # logger.info("completions.Completions.create returned: %s", result)
         logged_data = {
+            "session_id": request_id_ctx_var.get(),
             "messages": kwargs.get("messages", []),
             "response_texts": [choice.message.content for choice in result.choices],
             "symbolic_mappings": symbolic_mappings,
@@ -156,6 +177,26 @@ def logged_completions_create(self, *args, **kwargs):
 
 
 chat.Completions.create = logged_completions_create
+
+
+# Only modify FastAPI if it's available
+if FASTAPI_AVAILABLE:
+    original_get_route_handler = APIRoute.get_route_handler
+
+    def custom_get_route_handler(self):
+        original_handler = original_get_route_handler(self)
+        
+        async def custom_handler(request):
+            token = request_id_ctx_var.set(str(uuid.uuid4()))
+            try:
+                response = await original_handler(request)
+                return response
+            finally:
+                request_id_ctx_var.reset(token)
+        
+        return custom_handler
+
+    APIRoute.get_route_handler = custom_get_route_handler
 
 
 def main():

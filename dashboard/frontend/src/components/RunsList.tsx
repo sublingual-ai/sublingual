@@ -285,60 +285,66 @@ export const RunsList = () => {
                 return (
                   <div
                     key={entryId}
-                    className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+                    className="hover:bg-gray-50 transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                            {run.messages[run.messages.length - 1].content}
-                          </h3>
-                          {expandedId === entryId ? (
-                            <ChevronUp className="w-4 h-4 text-gray-500" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-gray-500" />
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2 mt-1">
-                          {run.extra_info.req_id && (
-                            <Badge 
-                              variant="outline" 
-                              className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
-                              onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
-                            >
-                              {run.extra_info.req_id}
+                    <div 
+                      className="p-4 cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                              {run.messages[run.messages.length - 1].content}
+                            </h3>
+                            {expandedId === entryId ? (
+                              <ChevronUp className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2 mt-1">
+                            {run.extra_info.req_id && (
+                              <Badge 
+                                variant="outline" 
+                                className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
+                                onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
+                              >
+                                {run.extra_info.req_id}
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-xs text-primary-700">
+                              {run.response.model}
                             </Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs text-primary-700">
-                            {run.response.model}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                            {run.response.usage.total_tokens} tokens
-                          </Badge>
+                            <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                              {run.response.usage.total_tokens} tokens
+                            </Badge>
+                          </div>
                         </div>
+                        <span className="text-xs text-gray-500">
+                          {new Date(run.timestamp * 1000).toLocaleString()}
+                        </span>
                       </div>
-                      <span className="text-xs text-gray-500">
-                        {new Date(run.timestamp * 1000).toLocaleString()}
-                      </span>
                     </div>
                     {expandedId === entryId && (
-                      <div className="mt-4 space-y-3 text-sm">
-                        {run.messages.map((msg, msgIndex) => (
-                          <div key={msgIndex}>
-                            <div className="font-medium text-gray-700">{msg.role}:</div>
-                            <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                              {msg.content}
-                            </div>
-                          </div>
-                        ))}
-                        <div>
-                          <div className="font-medium text-gray-700">Responses:</div>
-                          {run.response_texts.map((text, respIndex) => (
-                            <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                              {text}
+                      <div className="px-4 pb-4">
+                        <div className="space-y-3 text-sm">
+                          {run.messages.map((msg, msgIndex) => (
+                            <div key={msgIndex}>
+                              <div className="font-medium text-gray-700">{msg.role}:</div>
+                              <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                                {msg.content}
+                              </div>
                             </div>
                           ))}
+                          <div>
+                            <div className="font-medium text-gray-700">Responses:</div>
+                            {run.response_texts.map((text, respIndex) => (
+                              <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                                {text}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}

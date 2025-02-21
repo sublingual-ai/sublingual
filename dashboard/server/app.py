@@ -9,7 +9,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-logs_cache = []
+log_dir = ""
 
 @app.route("/")
 def home():
@@ -37,7 +37,7 @@ def get_log():
 
 @app.route("/get_available_logs")
 def get_available_logs():
-    files = os.listdir(".")
+    files = [os.path.join(log_dir, f) for f in os.listdir(log_dir)]
     # Get creation time for each file and sort descending
     files_with_time = [(f, os.path.getctime(f)) for f in files]
     files_with_time.sort(key=lambda x: x[1], reverse=True)
@@ -50,5 +50,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=5360, help="Port number for the Flask server")
     parser.add_argument("--log-dir", type=str, default=".", help="Directory to load .jsonl log files from")
     args = parser.parse_args()
+
+    log_dir = args.log_dir
 
     app.run(debug=True, host="0.0.0.0", port=args.port)

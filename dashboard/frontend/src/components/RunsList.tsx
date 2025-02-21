@@ -129,6 +129,7 @@ export const RunsList = () => {
     stackInfo: StackInfo;
     position: { x: number; y: number };
   } | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('http://localhost:5360/logs')
@@ -151,6 +152,16 @@ export const RunsList = () => {
 
   const handleCallerClick = (stackInfo: StackInfo, event: React.MouseEvent) => {
     event.stopPropagation();
+    
+    // Close popup if clicking the same caller
+    if (popupInfo && 
+        popupInfo.stackInfo.filename === stackInfo.filename && 
+        popupInfo.stackInfo.lineno === stackInfo.lineno) {
+      setPopupInfo(null);
+      return;
+    }
+
+    // Open popup for new caller
     const rect = event.currentTarget.getBoundingClientRect();
     setPopupInfo({
       stackInfo,
@@ -210,6 +221,22 @@ export const RunsList = () => {
     }
     return acc;
   }, {} as Record<string, LLMRun[]>);
+
+  const toggleGroup = (caller: string) => {
+    setExpandedGroups(prev =>
+      prev.includes(caller)
+        ? prev.filter(c => c !== caller)
+        : [...prev, caller]
+    );
+  };
+
+  // Update expandedGroups when runs change
+  useEffect(() => {
+    const allCallers = runs.map(run =>
+      `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`
+    );
+    setExpandedGroups(Array.from(new Set(allCallers)));
+  }, [runs]);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
@@ -272,85 +299,106 @@ export const RunsList = () => {
           {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
             <div key={caller} className="border-b border-gray-200">
               <div
-                className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors caller-header"
-                onClick={(e) => handleCallerClick(runs[0].stack_info, e)}
+                className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => toggleGroup(caller)}
               >
-                <h3 className="text-sm font-medium text-gray-700 flex items-center">
-                  <Tag className="w-4 h-4 mr-2" />
-                  {caller}
+                <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Tag className="w-4 h-4 mr-2" />
+                    <span 
+                      className="hover:text-primary-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCallerClick(runs[0].stack_info, e);
+                      }}
+                    >
+                      {caller}
+                    </span>
+                  </div>
+                  {expandedGroups.includes(caller) ? (
+                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  )}
                 </h3>
               </div>
-              {runs.map((run, index) => {
-                const entryId = `${caller}-${index}`;
-                return (
-                  <div
-                    key={entryId}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <div 
-                      className="p-4 cursor-pointer"
-                      onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+              <div
+                className={`transition-all duration-200 ${
+                  expandedGroups.includes(caller) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
+                }`}
+              >
+                {expandedGroups.includes(caller) && runs.map((run, index) => {
+                  const entryId = `${caller}-${index}`;
+                  return (
+                    <div
+                      key={entryId}
+                      className="hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                              {run.messages[run.messages.length - 1].content}
-                            </h3>
-                            {expandedId === entryId ? (
-                              <ChevronUp className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-gray-500" />
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2 mt-1">
-                            {run.extra_info.req_id && (
-                              <Badge 
-                                variant="outline" 
-                                className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
-                                onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
-                              >
-                                {run.extra_info.req_id}
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs text-primary-700">
-                              {run.response.model}
-                            </Badge>
-                            <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                              {run.response.usage.total_tokens} tokens
-                            </Badge>
-                          </div>
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          {new Date(run.timestamp * 1000).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                    {expandedId === entryId && (
-                      <div className="px-4 pb-4">
-                        <div className="space-y-3 text-sm">
-                          {run.messages.map((msg, msgIndex) => (
-                            <div key={msgIndex}>
-                              <div className="font-medium text-gray-700">{msg.role}:</div>
-                              <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                                {msg.content}
-                              </div>
+                      <div 
+                        className="p-4 cursor-pointer"
+                        onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2">
+                              <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                                {run.messages[run.messages.length - 1].content}
+                              </h3>
+                              {expandedId === entryId ? (
+                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              )}
                             </div>
-                          ))}
-                          <div>
-                            <div className="font-medium text-gray-700">Responses:</div>
-                            {run.response_texts.map((text, respIndex) => (
-                              <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                                {text}
+                            <div className="flex items-center space-x-2 mt-1">
+                              {run.extra_info.req_id && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
+                                  onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
+                                >
+                                  {run.extra_info.req_id}
+                                </Badge>
+                              )}
+                              <Badge variant="outline" className="text-xs text-primary-700">
+                                {run.response.model}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                                {run.response.usage.total_tokens} tokens
+                              </Badge>
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {new Date(run.timestamp * 1000).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      {expandedId === entryId && (
+                        <div className="px-4 pb-4">
+                          <div className="space-y-3 text-sm">
+                            {run.messages.map((msg, msgIndex) => (
+                              <div key={msgIndex}>
+                                <div className="font-medium text-gray-700">{msg.role}:</div>
+                                <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                                  {msg.content}
+                                </div>
                               </div>
                             ))}
+                            <div>
+                              <div className="font-medium text-gray-700">Responses:</div>
+                              {run.response_texts.map((text, respIndex) => (
+                                <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                                  {text}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>

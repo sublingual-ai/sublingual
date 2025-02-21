@@ -1,57 +1,179 @@
-
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, ChevronDown, ChevronUp, Tag, Users } from "lucide-react";
-import { useState } from "react";
+import { Search, ChevronDown, ChevronUp, Tag, Users, Hash } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 
-interface LLMRun {
-  id: string;
-  input: string;
-  output: string;
-  tags: string[];
-  timestamp: string;
-  model: string;
-  caller: string;
+interface Message {
+  role: string;
+  content: string;
 }
 
-const sampleRuns: LLMRun[] = [
-  {
-    id: "1",
-    input: "Explain the concept of recursion in programming.",
-    output: "Recursion is a programming concept where a function calls itself to solve a larger problem by breaking it down into smaller, similar sub-problems...",
-    tags: ["technical", "explanation", "programming"],
-    timestamp: "2024-03-20T10:30:00Z",
-    model: "gpt-4o-mini",
-    caller: "documentation-bot"
-  },
-  {
-    id: "2",
-    input: "Write a tweet about AI safety.",
-    output: "As we advance in AI technology, establishing robust safety measures isn't just a priority—it's a necessity. We must ensure AI development aligns with human values and ethics. #AISafety #Ethics",
-    tags: ["social", "AI", "safety"],
-    timestamp: "2024-03-20T11:15:00Z",
-    model: "gpt-4o",
-    caller: "social-media-bot"
-  },
-];
+interface StackInfo {
+  filename: string;
+  lineno: number;
+  code_context: string[];
+  caller_function_name: string;
+}
+
+interface LLMRun {
+  messages: Message[];
+  response_texts: string[];
+  timestamp: number;
+  response: {
+    model: string;
+    usage: {
+      total_tokens: number;
+    }
+  };
+  extra_info: {
+    req_id: string;
+  };
+  stack_info: StackInfo;
+}
+
+const CodePopup = ({
+  stackInfo,
+  isVisible,
+  position,
+  onClose
+}: {
+  stackInfo: StackInfo;
+  isVisible: boolean;
+  position: { x: number; y: number };
+  onClose: () => void;
+}) => {
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isVisible && popupRef.current) {
+      const popup = popupRef.current;
+
+      popup.style.visibility = 'hidden';
+      popup.style.transform = 'none';
+      popup.style.left = '0';
+      popup.style.top = '0';
+
+      const rect = popup.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let left = position.x - (rect.width / 2);
+      let top = position.y + 20;
+
+      if (left + rect.width > viewportWidth - 20) {
+        left = viewportWidth - rect.width - 20;
+      }
+      if (left < 20) {
+        left = 20;
+      }
+
+      if (top + rect.height > viewportHeight - 20) {
+        top = position.y - rect.height - 10;
+      }
+
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
+      popup.style.visibility = 'visible';
+    }
+  }, [isVisible, position]);
+
+  if (!isVisible) return null;
+
+  // Calculate line numbers and find target line index
+  const codeLines = stackInfo.code_context;
+  const targetLineIndex = Math.floor(codeLines.length / 2);
+
+  return (
+    <div
+      ref={popupRef}
+      className="fixed bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50 max-w-lg popup-content"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex justify-between items-center mb-1">
+        <h3 className="text-xs font-medium text-gray-700">
+          {stackInfo.filename}:{stackInfo.lineno}
+        </h3>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="text-gray-500 hover:text-gray-700 text-xs"
+        >
+          ✕
+        </button>
+      </div>
+      <pre className="bg-gray-50 p-2 rounded-md text-xs overflow-x-auto leading-4">
+        <code>
+          {codeLines.map((line, index) => (
+            <div
+              key={index}
+              className={index === targetLineIndex ? 'bg-green-100' : ''}
+            >
+              {line}
+            </div>
+          ))}
+        </code>
+      </pre>
+    </div>
+  );
+};
 
 export const RunsList = () => {
+  const [runs, setRuns] = useState<LLMRun[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedCallers, setSelectedCallers] = useState<string[]>([]);
+  const [selectedReqIds, setSelectedReqIds] = useState<string[]>([]);
+  const [popupInfo, setPopupInfo] = useState<{
+    stackInfo: StackInfo;
+    position: { x: number; y: number };
+  } | null>(null);
 
-  // Get unique tags and callers from all runs
-  const allTags = Array.from(new Set(sampleRuns.flatMap(run => run.tags)));
-  const allCallers = Array.from(new Set(sampleRuns.map(run => run.caller)));
+  useEffect(() => {
+    fetch('http://localhost:5360/logs')
+      .then(res => res.json())
+      .then(data => setRuns(data));
+  }, []);
 
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
-    );
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (popupInfo &&
+        !(event.target as Element).closest('.popup-content') &&
+        !(event.target as Element).closest('.caller-header')) {
+        setPopupInfo(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [popupInfo]);
+
+  const handleCallerClick = (stackInfo: StackInfo, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPopupInfo({
+      stackInfo,
+      position: {
+        x: rect.left + rect.width / 2,
+        y: rect.top
+      }
+    });
   };
+
+  const handleReqIdClick = (reqId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setSelectedReqIds(prev => [...prev, reqId]);
+  };
+
+  const removeReqIdFilter = (reqId: string) => {
+    setSelectedReqIds(prev => prev.filter(id => id !== reqId));
+  };
+
+  // Get unique callers from all runs, now including line numbers
+  const allCallers = Array.from(new Set(runs.map(run =>
+    `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`
+  )));
 
   const toggleCaller = (caller: string) => {
     setSelectedCallers(prev =>
@@ -61,34 +183,43 @@ export const RunsList = () => {
     );
   };
 
-  const filteredRuns = sampleRuns.filter(run => {
-    const matchesSearch = run.input.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         run.output.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTags = selectedTags.length === 0 || 
-                       selectedTags.every(tag => run.tags.includes(tag));
-    const matchesCaller = selectedCallers.length === 0 ||
-                         selectedCallers.includes(run.caller);
-    return matchesSearch && matchesTags && matchesCaller;
-  });
-
-  // Group runs by caller
-  const groupedRuns = filteredRuns.reduce((acc, run) => {
-    if (!acc[run.caller]) {
-      acc[run.caller] = [];
+  // First group all runs by caller
+  const allGroupedRuns = runs.reduce((acc, run) => {
+    const caller = `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`;
+    if (!acc[caller]) {
+      acc[caller] = [];
     }
-    acc[run.caller].push(run);
+    acc[caller].push(run);
+    return acc;
+  }, {} as Record<string, LLMRun[]>);
+
+  // Then filter the groups based on search and selected callers
+  const filteredGroupedRuns = Object.entries(allGroupedRuns).reduce((acc, [caller, runs]) => {
+    const filteredRuns = runs.filter(run =>
+      (run.messages.some(msg =>
+        msg.content.toLowerCase().includes(searchTerm.toLowerCase())
+      ) || run.response_texts.some(text =>
+        text.toLowerCase().includes(searchTerm.toLowerCase())
+      )) &&
+      (selectedReqIds.length === 0 || selectedReqIds.includes(run.extra_info.req_id))
+    );
+
+    if (filteredRuns.length > 0 &&
+      (selectedCallers.length === 0 || selectedCallers.includes(caller))) {
+      acc[caller] = filteredRuns;
+    }
     return acc;
   }, {} as Record<string, LLMRun[]>);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-[calc(100vh-2rem)]">
-      <div className="p-4 border-b border-gray-100">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
+      <div className="p-4 border-b border-gray-100 flex-shrink-0">
         <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
         <div className="mt-4 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Search inputs and outputs..."
+            placeholder="Search messages and responses..."
             className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -98,111 +229,133 @@ export const RunsList = () => {
           <div className="flex flex-wrap gap-2">
             <span className="text-sm font-medium text-gray-700 flex items-center">
               <Users className="w-4 h-4 mr-2" />
-              Callers:
+              Files:
             </span>
             {allCallers.map(caller => (
               <Badge
                 key={caller}
                 variant="secondary"
-                className={`cursor-pointer ${
-                  selectedCallers.includes(caller)
-                    ? "bg-primary-100 text-primary-700"
-                    : "bg-gray-100 text-gray-700"
-                }`}
+                className={`cursor-pointer ${selectedCallers.includes(caller)
+                  ? "bg-primary-100 text-primary-700"
+                  : "bg-gray-100 text-gray-700"
+                  }`}
                 onClick={() => toggleCaller(caller)}
               >
-                {caller}
+                {caller.split('/').pop()}
               </Badge>
             ))}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="text-sm font-medium text-gray-700 flex items-center">
-              <Tag className="w-4 h-4 mr-2" />
-              Tags:
-            </span>
-            {allTags.map(tag => (
-              <Badge
-                key={tag}
-                variant="secondary"
-                className={`cursor-pointer ${
-                  selectedTags.includes(tag)
-                    ? "bg-primary-100 text-primary-700"
-                    : "bg-gray-100 text-gray-700"
-                }`}
-                onClick={() => toggleTag(tag)}
-              >
-                {tag}
-              </Badge>
-            ))}
-          </div>
+          
+          {selectedReqIds.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm font-medium text-gray-700 flex items-center">
+                <Hash className="w-4 h-4 mr-2" />
+                Request IDs:
+              </span>
+              {selectedReqIds.map(reqId => (
+                <Badge
+                  key={reqId}
+                  variant="secondary"
+                  className={`cursor-pointer bg-primary-100 text-primary-700`}
+                  onClick={() => removeReqIdFilter(reqId)}
+                >
+                  {reqId}
+                  <span className="ml-1 hover:text-primary-900">×</span>
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-      <ScrollArea className="h-[calc(100vh-340px)]">
+      <ScrollArea className="flex-1 overflow-auto">
         <div className="divide-y divide-gray-100">
-          {Object.entries(groupedRuns).map(([caller, runs]) => (
+          {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
             <div key={caller} className="border-b border-gray-200">
-              <div className="bg-gray-50 px-4 py-2">
-                <h3 className="text-sm font-medium text-gray-700">{caller}</h3>
+              <div
+                className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors caller-header"
+                onClick={(e) => handleCallerClick(runs[0].stack_info, e)}
+              >
+                <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                  <Tag className="w-4 h-4 mr-2" />
+                  {caller}
+                </h3>
               </div>
-              {runs.map((run) => (
-                <div
-                  key={run.id}
-                  className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                          {run.input}
-                        </h3>
-                        {expandedId === run.id ? (
-                          <ChevronUp className="w-4 h-4 text-gray-500" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-gray-500" />
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge variant="outline" className="text-xs text-primary-700">
-                          {run.model}
-                        </Badge>
-                        {run.tags.map((tag) => (
-                          <Badge
-                            key={tag}
-                            variant="secondary"
-                            className="text-xs bg-primary-50 text-primary-700"
-                          >
-                            {tag}
+              {runs.map((run, index) => {
+                const entryId = `${caller}-${index}`;
+                return (
+                  <div
+                    key={entryId}
+                    className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                            {run.messages[run.messages.length - 1].content}
+                          </h3>
+                          {expandedId === entryId ? (
+                            <ChevronUp className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2 mt-1">
+                          {run.extra_info.req_id && (
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
+                              onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
+                            >
+                              {run.extra_info.req_id}
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-xs text-primary-700">
+                            {run.response.model}
                           </Badge>
+                          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                            {run.response.usage.total_tokens} tokens
+                          </Badge>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(run.timestamp * 1000).toLocaleString()}
+                      </span>
+                    </div>
+                    {expandedId === entryId && (
+                      <div className="mt-4 space-y-3 text-sm">
+                        {run.messages.map((msg, msgIndex) => (
+                          <div key={msgIndex}>
+                            <div className="font-medium text-gray-700">{msg.role}:</div>
+                            <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                              {msg.content}
+                            </div>
+                          </div>
                         ))}
+                        <div>
+                          <div className="font-medium text-gray-700">Responses:</div>
+                          {run.response_texts.map((text, respIndex) => (
+                            <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
+                              {text}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {new Date(run.timestamp).toLocaleString()}
-                    </span>
+                    )}
                   </div>
-                  {expandedId === run.id && (
-                    <div className="mt-4 space-y-3 text-sm">
-                      <div>
-                        <div className="font-medium text-gray-700">Input:</div>
-                        <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                          {run.input}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-700">Output:</div>
-                        <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                          {run.output}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>
       </ScrollArea>
+
+      <CodePopup
+        stackInfo={popupInfo?.stackInfo!}
+        isVisible={!!popupInfo}
+        position={popupInfo?.position!}
+        onClose={() => setPopupInfo(null)}
+      />
     </div>
   );
 };

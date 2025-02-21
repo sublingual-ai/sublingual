@@ -32,4 +32,4 @@ if __name__ == "__main__":
             "run_id": "run1",
         },
     )
-    print("\n====OpenAI chat response====\n", response.choices[0].message.content)
+    # print("\n====OpenAI chat response====\n", response.choices[0].message.content)

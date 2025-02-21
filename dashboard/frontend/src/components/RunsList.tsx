@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, ChevronDown, ChevronUp, Tag, Users, Hash } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Tag, Users, Hash, Layers } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
 interface Message {
@@ -29,6 +29,7 @@ interface LLMRun {
     req_id: string;
   };
   stack_info: StackInfo;
+  session_id: string;
 }
 
 const CodePopup = ({
@@ -130,6 +131,7 @@ export const RunsList = () => {
     position: { x: number; y: number };
   } | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState<'caller' | 'session'>('caller');
 
   useEffect(() => {
     fetch('http://localhost:5360/logs')
@@ -194,30 +196,34 @@ export const RunsList = () => {
     );
   };
 
-  // First group all runs by caller
+  // Modify the grouping logic to handle both caller and session grouping
   const allGroupedRuns = runs.reduce((acc, run) => {
-    const caller = `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`;
-    if (!acc[caller]) {
-      acc[caller] = [];
+    const groupKey = groupBy === 'caller' 
+      ? `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`
+      : run.session_id || 'No Session';
+    
+    if (!acc[groupKey]) {
+      acc[groupKey] = [];
     }
-    acc[caller].push(run);
+    acc[groupKey].push(run);
     return acc;
   }, {} as Record<string, LLMRun[]>);
 
-  // Then filter the groups based on search and selected callers
-  const filteredGroupedRuns = Object.entries(allGroupedRuns).reduce((acc, [caller, runs]) => {
+  // Update the filtering logic
+  const filteredGroupedRuns = Object.entries(allGroupedRuns).reduce((acc, [groupKey, runs]) => {
     const filteredRuns = runs.filter(run =>
       (run.messages.some(msg =>
         msg.content.toLowerCase().includes(searchTerm.toLowerCase())
       ) || run.response_texts.some(text =>
         text.toLowerCase().includes(searchTerm.toLowerCase())
       )) &&
-      (selectedReqIds.length === 0 || selectedReqIds.includes(run.extra_info.req_id))
+      (selectedReqIds.length === 0 || selectedReqIds.includes(run.extra_info.req_id)) &&
+      (groupBy === 'session' || selectedCallers.length === 0 || selectedCallers.includes(groupKey))
     );
 
     if (filteredRuns.length > 0 &&
-      (selectedCallers.length === 0 || selectedCallers.includes(caller))) {
-      acc[caller] = filteredRuns;
+      (groupBy === 'session' || selectedCallers.length === 0 || selectedCallers.includes(groupKey))) {
+      acc[groupKey] = filteredRuns;
     }
     return acc;
   }, {} as Record<string, LLMRun[]>);
@@ -241,7 +247,33 @@ export const RunsList = () => {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
       <div className="p-4 border-b border-gray-100 flex-shrink-0">
-        <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setGroupBy('caller')}
+              className={`px-3 py-1 rounded-md text-sm flex items-center gap-2 ${
+                groupBy === 'caller' 
+                  ? 'bg-primary-100 text-primary-700' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Tag className="w-4 h-4" />
+              Group by Caller
+            </button>
+            <button
+              onClick={() => setGroupBy('session')}
+              className={`px-3 py-1 rounded-md text-sm flex items-center gap-2 ${
+                groupBy === 'session' 
+                  ? 'bg-primary-100 text-primary-700' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              Group by Session
+            </button>
+          </div>
+        </div>
         <div className="mt-4 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
@@ -253,25 +285,27 @@ export const RunsList = () => {
           />
         </div>
         <div className="mt-4 space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <span className="text-sm font-medium text-gray-700 flex items-center">
-              <Users className="w-4 h-4 mr-2" />
-              Files:
-            </span>
-            {allCallers.map(caller => (
-              <Badge
-                key={caller}
-                variant="secondary"
-                className={`cursor-pointer ${selectedCallers.includes(caller)
-                  ? "bg-primary-100 text-primary-700"
-                  : "bg-gray-100 text-gray-700"
-                  }`}
-                onClick={() => toggleCaller(caller)}
-              >
-                {caller.split('/').pop()}
-              </Badge>
-            ))}
-          </div>
+          {groupBy === 'caller' && (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm font-medium text-gray-700 flex items-center">
+                <Users className="w-4 h-4 mr-2" />
+                Files:
+              </span>
+              {allCallers.map(caller => (
+                <Badge
+                  key={caller}
+                  variant="secondary"
+                  className={`cursor-pointer ${selectedCallers.includes(caller)
+                    ? "bg-primary-100 text-primary-700"
+                    : "bg-gray-100 text-gray-700"
+                    }`}
+                  onClick={() => toggleCaller(caller)}
+                >
+                  {caller.split('/').pop()}
+                </Badge>
+              ))}
+            </div>
+          )}
           
           {selectedReqIds.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -296,26 +330,35 @@ export const RunsList = () => {
       </div>
       <ScrollArea className="flex-1 overflow-auto">
         <div className="divide-y divide-gray-100">
-          {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
-            <div key={caller} className="border-b border-gray-200">
+          {Object.entries(filteredGroupedRuns).map(([groupKey, runs]) => (
+            <div key={groupKey} className="border-b border-gray-200">
               <div
                 className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors"
-                onClick={() => toggleGroup(caller)}
+                onClick={() => toggleGroup(groupKey)}
               >
                 <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
                   <div className="flex items-center">
-                    <Tag className="w-4 h-4 mr-2" />
-                    <span 
-                      className="hover:text-primary-700"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCallerClick(runs[0].stack_info, e);
-                      }}
-                    >
-                      {caller}
-                    </span>
+                    {groupBy === 'caller' ? (
+                      <>
+                        <Tag className="w-4 h-4 mr-2" />
+                        <span 
+                          className="hover:text-primary-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCallerClick(runs[0].stack_info, e);
+                          }}
+                        >
+                          {groupKey}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Layers className="w-4 h-4 mr-2" />
+                        <span>{groupKey}</span>
+                      </>
+                    )}
                   </div>
-                  {expandedGroups.includes(caller) ? (
+                  {expandedGroups.includes(groupKey) ? (
                     <ChevronUp className="w-4 h-4 text-gray-500" />
                   ) : (
                     <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -324,11 +367,11 @@ export const RunsList = () => {
               </div>
               <div
                 className={`transition-all duration-200 ${
-                  expandedGroups.includes(caller) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
+                  expandedGroups.includes(groupKey) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
                 }`}
               >
-                {expandedGroups.includes(caller) && runs.map((run, index) => {
-                  const entryId = `${caller}-${index}`;
+                {expandedGroups.includes(groupKey) && runs.map((run, index) => {
+                  const entryId = `${groupKey}-${index}`;
                   return (
                     <div
                       key={entryId}
@@ -351,6 +394,19 @@ export const RunsList = () => {
                               )}
                             </div>
                             <div className="flex items-center space-x-2 mt-1">
+                              {groupBy === 'session' && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCallerClick(run.stack_info, e);
+                                  }}
+                                >
+                                  <Tag className="w-3 h-3 mr-1 inline" />
+                                  {`${run.stack_info.filename.split('/').pop()}:${run.stack_info.lineno}`}
+                                </Badge>
+                              )}
                               {run.extra_info.req_id && (
                                 <Badge 
                                   variant="outline" 

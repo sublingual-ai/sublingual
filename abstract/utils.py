@@ -1,7 +1,7 @@
 import ast
-import astor  # pip install astor if needed
+import astor
 import inspect
-
+import re
 # ---------- Helper Classes for Symbolic Tokens ----------
 
 class Literal:
@@ -36,6 +36,16 @@ class FuncCall:
     def __repr__(self):
         return f'FuncCall({self.func_name!r}, {self.args!r})'
 
+class Symbol:
+    def __init__(self, expr):
+        self.expr = expr
+
+    def __str__(self):
+        return '{' + self.expr + '}'
+
+    def __repr__(self):
+        return f'Symbol({self.expr!r})'
+
 # ---------- AST Visitor for Symbolic Prompt Decompilation ----------
 
 class PromptSymbolicVisitor(ast.NodeVisitor):
@@ -63,7 +73,6 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
             # Check for keyword argument "messages"
             for kw in node.keywords:
                 if kw.arg == "messages":
-                    # Process the messages to produce a symbolic representation per message.
                     self.tokens = self.process_messages(kw.value)
         self.generic_visit(node)
 
@@ -83,6 +92,12 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
         return messages_tokens
 
     def process_expr(self, node):
+        # New branch: if node is a Name, substitute its assigned value if available.
+        if isinstance(node, ast.Name):
+            if node.id in self.env:
+                return self.process_expr(self.env[node.id])
+            else:
+                return [Var(node.id)]
         # Case 1: Literal strings via ast.Constant.
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return [Literal(node.value)]
@@ -93,15 +108,8 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
                     tokens.append(Literal(value.value))
                 elif isinstance(value, ast.FormattedValue):
-                    # For a formatted value, check if it's a simple variable.
                     if isinstance(value.value, ast.Name):
-                        var_name = value.value.id
-                        if var_name in self.env:
-                            # Instead of a simple Var, substitute with the symbolic representation
-                            # of its assigned expression.
-                            tokens.extend(self.process_expr(self.env[var_name]))
-                        else:
-                            tokens.append(Var(var_name))
+                        tokens.extend(self.process_expr(value.value))
                     elif isinstance(value.value, ast.Call):
                         tokens.append(self.process_function_call(value.value))
                     else:
@@ -112,6 +120,13 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
         elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             left_tokens = self.process_expr(node.left)
             right_tokens = self.process_expr(node.right)
+            
+            # If both sides are symbols, combine them
+            if (len(left_tokens) == 1 and isinstance(left_tokens[0], Symbol) and 
+                len(right_tokens) == 1 and isinstance(right_tokens[0], Symbol)):
+                combined_expr = f"{left_tokens[0].expr} + {right_tokens[0].expr}"
+                return [Symbol(combined_expr)]
+            
             return left_tokens + right_tokens
         # Case 4: Handling .format() calls
         elif isinstance(node, ast.Call):
@@ -120,11 +135,7 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
                 args_tokens = []
                 for arg in node.args:
                     if isinstance(arg, ast.Name):
-                        var_name = arg.id
-                        if var_name in self.env:
-                            args_tokens.extend(self.process_expr(self.env[var_name]))
-                        else:
-                            args_tokens.append(Var(var_name))
+                        args_tokens.extend(self.process_expr(arg))
                     elif isinstance(arg, ast.Call):
                         args_tokens.append(self.process_function_call(arg))
                     elif isinstance(arg, ast.Constant) and isinstance(arg.value, str):
@@ -151,30 +162,41 @@ class PromptSymbolicVisitor(ast.NodeVisitor):
                 return new_tokens
             else:
                 return [self.process_function_call(node)]
+        # New Case 5: Handling %-formatting
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+            # Expect left to be a constant string template.
+            if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
+                template = node.left.value
+                # Process the substitution: if the right-hand side is a tuple, process each element,
+                # otherwise process it as a single substitution.
+                subs = []
+                if isinstance(node.right, ast.Tuple):
+                    for elt in node.right.elts:
+                        subs.extend(self.process_expr(elt))
+                else:
+                    subs = self.process_expr(node.right)
+                parts = template.split("%s")
+                tokens = []
+                for i, part in enumerate(parts):
+                    if part:
+                        tokens.append(Literal(part))
+                    if i < len(parts) - 1:
+                        tokens.extend(subs)
+                return tokens
+            else:
+                expr = astor.to_source(node).strip()
+                return [Literal(expr)]
         else:
             expr = astor.to_source(node).strip()
-            return [Literal(expr)]
+            return [Symbol(expr)]
 
     def process_function_call(self, node):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            func_name = node.func.id
-            args_tokens = []
-            for arg in node.args:
-                if isinstance(arg, ast.Name):
-                    var_name = arg.id
-                    if var_name in self.env:
-                        args_tokens.extend(self.process_expr(self.env[var_name]))
-                    else:
-                        args_tokens.append(Var(var_name))
-                elif isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    args_tokens.append(Literal(arg.value))
-                else:
-                    expr = astor.to_source(arg).strip()
-                    args_tokens.append(Literal("{" + expr + "}"))
-            return FuncCall(func_name, args_tokens)
+        if isinstance(node, ast.Call):
+            expr = astor.to_source(node).strip()
+            return Symbol(expr)
         else:
             expr = astor.to_source(node).strip()
-            return Literal("{" + expr + "}")
+            return Symbol(expr)
 
 def symbolic_decompile(source_code):
     """
@@ -196,3 +218,77 @@ def get_caller_source():
     except Exception as e:
         print("Error retrieving source:", e)
         return None
+    
+def build_regex_from_tokens(tokens):
+    """
+    Build a regex pattern from a list of tokens.
+    Literal tokens are escaped exactly, and anything between them is captured.
+    Returns a tuple: (pattern, list_of_variable_names)
+    """
+    print("\nBuilding regex from tokens:", tokens)
+    pattern = ""
+    var_names = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if isinstance(token, Literal):
+            pattern += re.escape(token.value)
+        elif isinstance(token, (Var, Symbol)):
+            # Look ahead for consecutive symbolic tokens
+            start_idx = i
+            while (i + 1 < len(tokens) and 
+                   isinstance(tokens[i + 1], (Var, Symbol))):
+                i += 1
+            
+            # Capture everything between literals
+            pattern += "(.+?)"  # Back to simple non-greedy capture
+            if i > start_idx:
+                # Multiple symbols - combine their expressions for the name
+                exprs = []
+                for t in tokens[start_idx:i + 1]:
+                    if isinstance(t, Symbol):
+                        exprs.append(t.expr)
+                    else:  # Var
+                        exprs.append(str(t))
+                combined_expr = " + ".join(exprs)
+                var_names.append(("symbol", combined_expr))
+            else:
+                if isinstance(token, Var):
+                    var_names.append(("var", token.name))
+                else:
+                    var_names.append(("symbol", token.expr))
+        else:
+            pattern += re.escape(str(token))
+        i += 1
+    
+    pattern = "^" + pattern + "$"
+    print("Built pattern:", pattern)
+    print("Variable names:", var_names)
+    return pattern, var_names
+
+def extract_variables(tokens, final_string):
+    """
+    Given a token list and a final string, extract variable values using the built regex.
+    Returns a dict mapping each variable name to its first captured value.
+    """
+    print("\nExtracting variables from string:", final_string)
+    pattern, var_types_and_names = build_regex_from_tokens(tokens)
+    match = re.match(pattern, final_string)
+
+    print("Regex match result:", match)
+    if match:
+        print("Match groups:", match.groups())
+
+    if not match:
+        print("No match found!")
+        return {}
+
+    groups = match.groups()
+    result = {}
+    
+    for idx, (type_, name) in enumerate(var_types_and_names):
+        if idx < len(groups):
+            result[name] = groups[idx]
+            print(f"Captured {name} = {groups[idx]}")
+    
+    return result

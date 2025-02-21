@@ -6,13 +6,17 @@ import os
 import time
 import json
 import uuid
+import json
+from datetime import datetime
+import os
+
 # Import the OpenAI client and underlying resource modules.
 from openai import OpenAI
 from openai.resources import completions
 from openai.resources.chat import chat
 
 # Import our AST parsing utilities.
-import ast_utils
+from abstract import utils
 
 # Set up logging.
 logger = logging.getLogger("sublingual")
@@ -29,9 +33,47 @@ def write_logged_data(logged_data, file_name):
         f.write(json.dumps(logged_data) + "\n")
 
 
-# -------------------------------
-# Patch completions.Completions.create
-# -------------------------------
+def get_symbolic_mappings(source_code, messages):
+    """
+    Given the caller's source code and the messages argument (list of dicts),
+    decompile the prompt construction into symbolic tokens,
+    build regex patterns for each message, extract variable values,
+    and return a list of mappings (one per message) along with the number of regexes.
+    """
+    # Decompile the source code to get symbolic token lists.
+    tokens = utils.symbolic_decompile(source_code)
+    
+    # Ensure we always have a list of token lists.
+    if tokens and not isinstance(tokens[0], list):
+        token_lists = [tokens]
+    else:
+        token_lists = tokens
+
+    # Extract final prompt strings for user messages.
+    user_prompts = [msg.get("content", "") for msg in messages]
+
+    mapping_list = []
+    for idx, token_list in enumerate(token_lists):
+        # Build regex pattern and variable names for this token list.
+        regex, var_names = utils.build_regex_from_tokens(token_list)
+        # Use the corresponding prompt string (if available) for extraction.
+        final_string = user_prompts[idx] if idx < len(user_prompts) else ""
+        extracted = utils.extract_variables(token_list, final_string) if final_string else {}
+
+        mapping = []
+        for token in token_list:
+            if isinstance(token, utils.Literal):
+                mapping.append({"symbol": repr(token), "value": token.value})
+            elif isinstance(token, utils.Var):
+                mapping.append({"symbol": repr(token), "value": extracted.get(token.name, None)})
+            elif isinstance(token, utils.FuncCall):
+                mapping.append({"symbol": repr(token), "value": extracted.get(token.func_name, None)})
+            else:  # Symbol case
+                mapping.append({"symbol": repr(token), "value": extracted.get(token.expr, None)})
+        mapping_list.append(mapping)
+    return mapping_list, len(token_lists)
+
+
 original_completions_create = chat.Completions.create
 
 
@@ -42,12 +84,10 @@ def logged_completions_create(self, *args, **kwargs):
     )
 
     # Get the caller's source code one level up the stack.
-    source_code = ast_utils.get_caller_source()
+    source_code = utils.get_caller_source()
     if source_code:
-        logger.info("Caller source code:\n%s", source_code)
-        # Decompile the prompt from the caller's source code.
-        tokens = ast_utils.symbolic_decompile(source_code)
-        logger.info("Abstract symbolic representation: %s", tokens)
+        messages = kwargs.get("messages", [])
+        symbolic_mappings, regex_count = get_symbolic_mappings(source_code, messages)
     else:
         logger.info("No caller source available.")
 
@@ -56,6 +96,7 @@ def logged_completions_create(self, *args, **kwargs):
     logged_data = {
         "messages": kwargs.get("messages", []),
         "response_texts": [choice.message.content for choice in result.choices],
+        "symbolic_mappings": symbolic_mappings,
         "response": result.to_dict(),
         "usage": result.usage.to_dict(),
         "timestamp": int(time.time()),

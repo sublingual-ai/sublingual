@@ -7,6 +7,7 @@ setup(
     entry_points={
         'console_scripts': [
             'subl=sublingual_eval.subl:main',
+            'subl-flask=sublingual_eval.subl:flask',
         ],
     },
 )

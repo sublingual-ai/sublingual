@@ -79,8 +79,9 @@ original_completions_create = chat.Completions.create
 
 @functools.wraps(original_completions_create)
 def logged_completions_create(self, *args, **kwargs):
+    filename = f"{uuid.uuid4()}.jsonl"
     logger.info(
-        "completions.Completions.create called with args: %s, kwargs: %s", args, kwargs
+        f"[{filename}] completions.Completions.create called with args: %s, kwargs: %s", args, kwargs
     )
 
     # Get the caller's source code one level up the stack.
@@ -113,20 +114,75 @@ def logged_completions_create(self, *args, **kwargs):
             **kwargs.get("extra_headers", {}),
         },
     }
-    write_logged_data(logged_data, f"{uuid.uuid4()}.jsonl")
+    write_logged_data(logged_data, filename)
     return result
 
 
 chat.Completions.create = logged_completions_create
 
+
+def flask():
+    """
+    Run the Flask CLI with sublingual logging enabled.
+    Usage: python -m subl flask <normal flask arguments>
+    """
+    try:
+        from flask.cli import main as flask_main
+    except ImportError:
+        print("Error: Flask is not installed. Please install Flask first.")
+        sys.exit(1)
+    
+    flask_main()
+
+
+def django():
+    """
+    Run Django management commands with sublingual logging enabled.
+    Usage: python -m subl django <normal django arguments>
+    """
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError:
+        print("Error: Django is not installed. Please install Django first.")
+        sys.exit(1)
+    
+    execute_from_command_line(sys.argv)
+
+
+def uvicorn():
+    """
+    Run Uvicorn server with sublingual logging enabled.
+    Usage: python -m subl uvicorn <normal uvicorn arguments>
+    """
+    try:
+        from uvicorn.main import main as uvicorn_main
+    except ImportError:
+        print("Error: Uvicorn is not installed. Please install Uvicorn first.")
+        sys.exit(1)
+    
+    uvicorn_main()
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python -m subl <script.py>")
+        print("Usage: subl <script.py|flask|django|uvicorn> [arguments]")
         sys.exit(1)
-    script = sys.argv[1]
-    # Adjust sys.argv so that the target script sees its own arguments.
-    sys.argv = sys.argv[1:]
-    runpy.run_path(script, run_name="__main__")
+        
+    command = sys.argv[1]
+    
+    if command == "flask":
+        sys.argv = sys.argv[1:]  # Remove 'subl' from arguments
+        flask()
+    elif command == "django":
+        sys.argv = sys.argv[1:]  # Remove 'subl' from arguments
+        django()
+    elif command == "uvicorn":
+        sys.argv = sys.argv[1:]  # Remove 'subl' from arguments
+        uvicorn()
+    else:
+        # Treat as a Python script
+        sys.argv = sys.argv[1:]
+        runpy.run_path(command, run_name="__main__")
 
 
 if __name__ == "__main__":

@@ -1,34 +1,25 @@
+# sublingual_eval/subl.py
+
+import argparse
 import sys
-import logging
-import runpy
-import os
-
-# Set up logging
-logger = logging.getLogger("sublingual")
-logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.StreamHandler())
-
-# Import our logging setup functions
-from sublingual_eval.openai_logger import setup_openai_logging, setup_openai_async_logging
-from sublingual_eval.fastapi_logger import setup_fastapi_logging
-
-def init():
-    """Initialize all logging functionality"""
-    setup_openai_logging()
-    setup_openai_async_logging()
-    setup_fastapi_logging()
-
-# Initialize on import
-init()
+from sublingual_eval.wrapper_exec import main as wrapper_main
+from dashboard.run_servers import main as server_main
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python -m subl <script.py>")
-        sys.exit(1)
-    script = sys.argv[1]
-    # Adjust sys.argv so that the target script sees its own arguments
-    sys.argv = sys.argv[1:]
-    runpy.run_path(script, run_name="__main__")
+    parser = argparse.ArgumentParser(description="Subl command line interface")
+    
+    if len(sys.argv) > 1 and sys.argv[1] == 'server':
+        # Handle server command
+        parser.add_argument('command', help='Command to run (server)')
+        parser.add_argument('log_dir', help='Directory containing the log files (e.g., subl_logs)')
+        parser.add_argument('--flask-port', type=int, default=5360, help='Port for the Flask server (default: 5360)')
+        parser.add_argument('--react-port', type=int, default=5361, help='Port for the React server (default: 5361)')
+        parser.add_argument('-v', '--verbose', action='store_true', help='Show Flask server output')
+        args = parser.parse_args()
+        server_main(args)
+    else:
+        # Handle script execution - let wrapper_main handle the args
+        wrapper_main()
 
 if __name__ == "__main__":
     main()

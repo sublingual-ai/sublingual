@@ -2,6 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, ChevronDown, ChevronUp, Tag, Users, Hash } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useLogFile } from "@/contexts/LogFileContext";
+import { Spinner } from "@/components/ui/spinner";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 interface Message {
   role: string;
@@ -119,9 +122,42 @@ const CodePopup = ({
   );
 };
 
+const truncateText = (text: string) => {
+  const k = 100;
+  if (text.length <= 2 * k) return text;
+  return (
+    <>
+      {text.slice(0, k)}
+      <span className="font-bold text-gray-700"> ( ... ) </span>
+      {text.slice(-k)}
+    </>
+  );
+};
+
+const FullTextDialog = ({
+  text,
+  isOpen,
+  onClose
+}: {
+  text: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) => {
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh]">
+        <div className="overflow-y-auto p-4">
+          <pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export const RunsList = () => {
+  const { selectedFile } = useLogFile();
   const [runs, setRuns] = useState<LLMRun[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCallers, setSelectedCallers] = useState<string[]>([]);
   const [selectedReqIds, setSelectedReqIds] = useState<string[]>([]);
@@ -130,12 +166,31 @@ export const RunsList = () => {
     position: { x: number; y: number };
   } | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fullTextContent, setFullTextContent] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:5360/logs')
-      .then(res => res.json())
-      .then(data => setRuns(data));
-  }, []);
+    const fetchData = async () => {
+      if (!selectedFile) return;
+      
+      setIsLoading(true);
+      try {
+        const res = await fetch(`http://localhost:5360/get_log?filename=${selectedFile}`);
+        if (!res.ok) {
+          throw new Error('Failed to fetch logs');
+        }
+        const data = await res.json();
+        setRuns(data);
+      } catch (error) {
+        console.error('Error fetching logs:', error);
+        setRuns([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [selectedFile]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -150,13 +205,25 @@ export const RunsList = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [popupInfo]);
 
+  useEffect(() => {
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPopupInfo(null);
+        setFullTextContent(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscapeKey);
+    return () => document.removeEventListener('keydown', handleEscapeKey);
+  }, []);
+
   const handleCallerClick = (stackInfo: StackInfo, event: React.MouseEvent) => {
     event.stopPropagation();
-    
+
     // Close popup if clicking the same caller
-    if (popupInfo && 
-        popupInfo.stackInfo.filename === stackInfo.filename && 
-        popupInfo.stackInfo.lineno === stackInfo.lineno) {
+    if (popupInfo &&
+      popupInfo.stackInfo.filename === stackInfo.filename &&
+      popupInfo.stackInfo.lineno === stackInfo.lineno) {
       setPopupInfo(null);
       return;
     }
@@ -175,6 +242,7 @@ export const RunsList = () => {
   const handleReqIdClick = (reqId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     setSelectedReqIds(prev => [...prev, reqId]);
+    setExpandedIds([]);
   };
 
   const removeReqIdFilter = (reqId: string) => {
@@ -272,7 +340,7 @@ export const RunsList = () => {
               </Badge>
             ))}
           </div>
-          
+
           {selectedReqIds.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <span className="text-sm font-medium text-gray-700 flex items-center">
@@ -294,121 +362,150 @@ export const RunsList = () => {
           )}
         </div>
       </div>
-      <ScrollArea className="flex-1 overflow-auto">
-        <div className="divide-y divide-gray-100">
-          {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
-            <div key={caller} className="border-b border-gray-200">
-              <div
-                className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors"
-                onClick={() => toggleGroup(caller)}
-              >
-                <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Tag className="w-4 h-4 mr-2" />
-                    <span 
-                      className="hover:text-primary-700"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCallerClick(runs[0].stack_info, e);
-                      }}
-                    >
-                      {caller}
-                    </span>
-                  </div>
-                  {expandedGroups.includes(caller) ? (
-                    <ChevronUp className="w-4 h-4 text-gray-500" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                  )}
-                </h3>
-              </div>
-              <div
-                className={`transition-all duration-200 ${
-                  expandedGroups.includes(caller) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
-                }`}
-              >
-                {expandedGroups.includes(caller) && runs.map((run, index) => {
-                  const entryId = `${caller}-${index}`;
-                  return (
-                    <div
-                      key={entryId}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <div 
-                        className="p-4 cursor-pointer"
-                        onClick={() => setExpandedId(expandedId === entryId ? null : entryId)}
+      {isLoading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Spinner className="w-8 h-8 text-primary-500" />
+        </div>
+      ) : runs.length > 0 ? (
+        <ScrollArea className="flex-1 overflow-auto">
+          <div className="divide-y divide-gray-100">
+            {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
+              <div key={caller} className="border-b border-gray-200">
+                <div
+                  className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => toggleGroup(caller)}
+                >
+                  <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Tag className="w-4 h-4 mr-2" />
+                      <span
+                        className="hover:text-primary-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCallerClick(runs[0].stack_info, e);
+                        }}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2">
-                              <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                                {run.messages[run.messages.length - 1].content}
-                              </h3>
-                              {expandedId === entryId ? (
-                                <ChevronUp className="w-4 h-4 text-gray-500" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-500" />
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-2 mt-1">
-                              {run.extra_info.req_id && (
-                                <Badge 
-                                  variant="outline" 
-                                  className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100"
-                                  onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
-                                >
-                                  {run.extra_info.req_id}
-                                </Badge>
-                              )}
-                              <Badge variant="outline" className="text-xs text-primary-700">
-                                {run.response.model}
-                              </Badge>
-                              <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                                {run.response.usage.total_tokens} tokens
-                              </Badge>
-                            </div>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {new Date(run.timestamp * 1000).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                      {expandedId === entryId && (
-                        <div className="px-4 pb-4">
-                          <div className="space-y-3 text-sm">
-                            {run.messages.map((msg, msgIndex) => (
-                              <div key={msgIndex}>
-                                <div className="font-medium text-gray-700">{msg.role}:</div>
-                                <div className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                                  {msg.content}
-                                </div>
+                        {caller}
+                      </span>
+                    </div>
+                    {expandedGroups.includes(caller) ? (
+                      <ChevronUp className="w-4 h-4 text-gray-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    )}
+                  </h3>
+                </div>
+                <div
+                  className={`transition-all duration-200 ${expandedGroups.includes(caller) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
+                    }`}
+                >
+                  {expandedGroups.includes(caller) && runs.map((run, index) => {
+                    const entryId = `${caller}-${index}`;
+                    return (
+                      <div
+                        key={entryId}
+                        className="transition-colors"
+                      >
+                        <div
+                          className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => {
+                            setExpandedIds(prev => 
+                              prev.includes(entryId) 
+                                ? prev.filter(id => id !== entryId)
+                                : [...prev, entryId]
+                            );
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2">
+                                <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                                  {run.messages[run.messages.length - 1].content}
+                                </h3>
+                                {expandedIds.includes(entryId) ? (
+                                  <ChevronUp className="w-4 h-4 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                                )}
                               </div>
-                            ))}
-                            <div>
-                              <div className="font-medium text-gray-700">Responses:</div>
-                              {run.response_texts.map((text, respIndex) => (
-                                <div key={respIndex} className="mt-1 text-gray-600 bg-gray-50 p-3 rounded-md">
-                                  {text}
+                              <div className="flex items-center space-x-2 mt-1">
+                                {run.extra_info.req_id && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs text-primary-700 cursor-pointer"
+                                    onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
+                                  >
+                                    req: {run.extra_info.req_id}
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="text-xs text-primary-700">
+                                  {run.response.model}
+                                </Badge>
+                                <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                                  {run.response.usage.total_tokens} tokens
+                                </Badge>
+                              </div>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {new Date(run.timestamp * 1000).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                        {expandedIds.includes(entryId) && (
+                          <div className="px-4 pb-4">
+                            <div className="space-y-3 text-sm">
+                              {run.messages.map((msg, msgIndex) => (
+                                <div key={msgIndex}>
+                                  <div className="font-medium text-gray-700">{msg.role}:</div>
+                                  <div 
+                                    className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+                                    onClick={() => setFullTextContent(msg.content)}
+                                  >
+                                    {truncateText(msg.content)}
+                                  </div>
                                 </div>
                               ))}
+                              <div>
+                                <div className="font-medium text-gray-700">Responses:</div>
+                                {run.response_texts.map((text, respIndex) => (
+                                  <div 
+                                    key={respIndex} 
+                                    className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+                                    onClick={() => setFullTextContent(text)}
+                                  >
+                                    <span className="font-mono text-xs text-gray-500 mr-2">[{respIndex}]</span>
+                                    {truncateText(text)}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </ScrollArea>
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          No runs found
         </div>
-      </ScrollArea>
+      )}
 
       <CodePopup
         stackInfo={popupInfo?.stackInfo!}
         isVisible={!!popupInfo}
         position={popupInfo?.position!}
         onClose={() => setPopupInfo(null)}
+      />
+
+      <FullTextDialog
+        text={fullTextContent || ""}
+        isOpen={!!fullTextContent}
+        onClose={() => setFullTextContent(null)}
       />
     </div>
   );

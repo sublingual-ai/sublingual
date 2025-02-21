@@ -1,14 +1,16 @@
-
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { RunsList } from "@/components/RunsList";
+import { LogFileProvider } from "@/contexts/LogFileContext";
 
 const Index = () => {
   return (
-    <DashboardLayout>
-      <div className="w-full">
-        <RunsList />
-      </div>
-    </DashboardLayout>
+    <LogFileProvider>
+      <DashboardLayout>
+        <div className="w-full">
+          <RunsList />
+        </div>
+      </DashboardLayout>
+    </LogFileProvider>
   );
 };
 

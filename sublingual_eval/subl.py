@@ -16,7 +16,7 @@ from openai.resources import completions
 from openai.resources.chat import chat
 
 # Import our AST parsing utilities.
-from abstract import utils
+from sublingual_eval.abstract import utils
 
 # Set up logging.
 logger = logging.getLogger("sublingual")
@@ -119,10 +119,7 @@ def logged_completions_create(self, *args, **kwargs):
 
 chat.Completions.create = logged_completions_create
 
-# -------------------------------
-# Run the target script.
-# -------------------------------
-if __name__ == "__main__":
+def main():
     if len(sys.argv) < 2:
         print("Usage: python -m subl <script.py>")
         sys.exit(1)
@@ -130,3 +127,7 @@ if __name__ == "__main__":
     # Adjust sys.argv so that the target script sees its own arguments.
     sys.argv = sys.argv[1:]
     runpy.run_path(script, run_name="__main__")
+
+
+if __name__ == "__main__":
+    main()

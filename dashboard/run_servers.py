@@ -30,7 +30,6 @@ def start_flask(flask_dir, port='5360', log_dir='logs', verbose=False):
     return subprocess.Popen(
         ['python', 'app.py', '--port', str(port), '--log-dir', abs_log_dir],
         cwd=flask_dir,
-        # Only inherit stdout/stderr if verbose mode is enabled
         stdout=sys.stdout if verbose else subprocess.DEVNULL,
         stderr=sys.stderr if verbose else subprocess.DEVNULL
     )
@@ -49,19 +48,7 @@ def print_startup_message(flask_port, react_port):
     print(f"💡 {GREEN}Press Ctrl+C to stop the servers{RESET}")
     print("=" * 60 + "\n")
 
-def main():
-    parser = argparse.ArgumentParser(description='Start the dashboard servers')
-    parser.add_argument('log_dir', 
-                      help='Directory containing the log files (e.g., subl_logs)')
-    parser.add_argument('--flask-port', type=int, default=5360,
-                      help='Port for the Flask server (default: 5360)')
-    parser.add_argument('--react-port', type=int, default=5361,
-                      help='Port for the React server (default: 5361)')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                      help='Show Flask server output')
-    
-    args = parser.parse_args()
-    
+def main(args):
     # Check if log directory exists
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     abs_log_dir = os.path.join(project_root, args.log_dir)
@@ -112,4 +99,10 @@ def main():
     shutdown(None, None)
 
 if __name__ == '__main__':
-    main()
+    # This is just for direct script execution, not used by subl
+    parser = argparse.ArgumentParser(description='Start the dashboard servers')
+    parser.add_argument('log_dir', help='Directory containing the log files (e.g., subl_logs)')
+    parser.add_argument('--flask-port', type=int, default=5360, help='Port for the Flask server (default: 5360)')
+    parser.add_argument('--react-port', type=int, default=5361, help='Port for the React server (default: 5361)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show Flask server output')
+    main(parser.parse_args())

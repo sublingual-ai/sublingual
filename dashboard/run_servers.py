@@ -5,22 +5,22 @@ import sys
 import time
 import argparse
 
-def start_react(react_dir):
+def start_react(react_dir, port=5361):
     # Check if dependencies are installed
     node_modules = os.path.join(react_dir, 'node_modules')
     if not os.path.exists(node_modules):
         print("Installing React dependencies...")
         subprocess.check_call(['npm', 'install'], cwd=react_dir)
-    # Start the React dev server, redirecting output to devnull
+    # Start the React dev server with specified port
     print("Starting React server...")
     return subprocess.Popen(
-        ['npm', 'run', 'dev'], 
+        ['npm', 'run', 'dev', '--', '--port', str(port)], 
         cwd=react_dir,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
 
-def start_flask(flask_dir, port='5360', log_dir='logs'):
+def start_flask(flask_dir, port='5360', log_dir='logs', verbose=False):
     # Convert log_dir to absolute path relative to the project root
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     abs_log_dir = os.path.join(project_root, log_dir)
@@ -30,17 +30,35 @@ def start_flask(flask_dir, port='5360', log_dir='logs'):
     return subprocess.Popen(
         ['python', 'app.py', '--port', str(port), '--log-dir', abs_log_dir],
         cwd=flask_dir,
-        # Inherit stdout and stderr from parent process for Flask
-        stdout=sys.stdout,
-        stderr=sys.stderr
+        # Only inherit stdout/stderr if verbose mode is enabled
+        stdout=sys.stdout if verbose else subprocess.DEVNULL,
+        stderr=sys.stderr if verbose else subprocess.DEVNULL
     )
+
+def print_startup_message(flask_port, react_port):
+    # ANSI escape codes for colors
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RESET = '\033[0m'
+    
+    print("\n" + "=" * 60)
+    print(f"🚀 Servers started successfully!")
+    print(f"📱 Frontend available at: {BLUE}http://localhost:{react_port}{RESET}")
+    print(f"🔧 API server running at: {YELLOW}http://localhost:{flask_port}{RESET}")
+    print(f"💡 {GREEN}Press Ctrl+C to stop the servers{RESET}")
+    print("=" * 60 + "\n")
 
 def main():
     parser = argparse.ArgumentParser(description='Start the dashboard servers')
     parser.add_argument('log_dir', 
                       help='Directory containing the log files (e.g., subl_logs)')
-    parser.add_argument('--port', type=int, default=5360,
+    parser.add_argument('--flask-port', type=int, default=5360,
                       help='Port for the Flask server (default: 5360)')
+    parser.add_argument('--react-port', type=int, default=5361,
+                      help='Port for the React server (default: 5361)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                      help='Show Flask server output')
     
     args = parser.parse_args()
     
@@ -57,8 +75,8 @@ def main():
     flask_dir = os.path.join(base_dir, 'server')
 
     # Start servers with your parameters
-    react_proc = start_react(react_dir)
-    flask_proc = start_flask(flask_dir, port=args.port, log_dir=args.log_dir)
+    react_proc = start_react(react_dir, port=args.react_port)
+    flask_proc = start_flask(flask_dir, port=args.flask_port, log_dir=args.log_dir, verbose=args.verbose)
 
     # Give servers a moment to start and check if they're still running
     time.sleep(2)
@@ -70,6 +88,10 @@ def main():
         if flask_proc.poll() is None:
             flask_proc.terminate()
         sys.exit(1)
+
+    # Print the nice formatted message if not in verbose mode
+    if not args.verbose:
+        print_startup_message(args.flask_port, args.react_port)
 
     def shutdown(sig, frame):
         print("\nShutting down servers...")

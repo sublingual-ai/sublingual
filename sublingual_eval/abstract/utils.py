@@ -2,7 +2,7 @@ import ast
 import astor
 import inspect
 import re
-# ---------- Helper Classes for Symbolic Tokens ----------
+
 
 class Literal:
     def __init__(self, value):
@@ -225,7 +225,6 @@ def build_regex_from_tokens(tokens):
     Literal tokens are escaped exactly, and anything between them is captured.
     Returns a tuple: (pattern, list_of_variable_names)
     """
-    print("\nBuilding regex from tokens:", tokens)
     pattern = ""
     var_names = []
     i = 0
@@ -262,8 +261,6 @@ def build_regex_from_tokens(tokens):
         i += 1
     
     pattern = "^" + pattern + "$"
-    print("Built pattern:", pattern)
-    print("Variable names:", var_names)
     return pattern, var_names
 
 def extract_variables(tokens, final_string):
@@ -271,16 +268,10 @@ def extract_variables(tokens, final_string):
     Given a token list and a final string, extract variable values using the built regex.
     Returns a dict mapping each variable name to its first captured value.
     """
-    print("\nExtracting variables from string:", final_string)
     pattern, var_types_and_names = build_regex_from_tokens(tokens)
     match = re.match(pattern, final_string)
 
-    print("Regex match result:", match)
     if match:
-        print("Match groups:", match.groups())
-
-    if not match:
-        print("No match found!")
         return {}
 
     groups = match.groups()
@@ -289,6 +280,5 @@ def extract_variables(tokens, final_string):
     for idx, (type_, name) in enumerate(var_types_and_names):
         if idx < len(groups):
             result[name] = groups[idx]
-            print(f"Captured {name} = {groups[idx]}")
     
     return result

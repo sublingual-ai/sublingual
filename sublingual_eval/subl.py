@@ -9,6 +9,7 @@ import uuid
 import json
 from datetime import datetime
 import os
+import inspect
 
 # Import the OpenAI client and underlying resource modules.
 from openai import OpenAI
@@ -20,12 +21,14 @@ from sublingual_eval.abstract import utils
 
 # Set up logging.
 logger = logging.getLogger("sublingual")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler())
 
 subl_logs_path = "subl_logs/"
 if not os.path.exists(subl_logs_path):
     os.makedirs(subl_logs_path)
+
+output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
 
 
 def write_logged_data(logged_data, file_name):
@@ -42,7 +45,7 @@ def get_symbolic_mappings(source_code, messages):
     """
     # Decompile the source code to get symbolic token lists.
     tokens = utils.symbolic_decompile(source_code)
-    
+
     # Ensure we always have a list of token lists.
     if tokens and not isinstance(tokens[0], list):
         token_lists = [tokens]
@@ -58,18 +61,29 @@ def get_symbolic_mappings(source_code, messages):
         regex, var_names = utils.build_regex_from_tokens(token_list)
         # Use the corresponding prompt string (if available) for extraction.
         final_string = user_prompts[idx] if idx < len(user_prompts) else ""
-        extracted = utils.extract_variables(token_list, final_string) if final_string else {}
+        extracted = (
+            utils.extract_variables(token_list, final_string) if final_string else {}
+        )
 
         mapping = []
         for token in token_list:
             if isinstance(token, utils.Literal):
                 mapping.append({"symbol": repr(token), "value": token.value})
             elif isinstance(token, utils.Var):
-                mapping.append({"symbol": repr(token), "value": extracted.get(token.name, None)})
+                mapping.append(
+                    {"symbol": repr(token), "value": extracted.get(token.name, None)}
+                )
             elif isinstance(token, utils.FuncCall):
-                mapping.append({"symbol": repr(token), "value": extracted.get(token.func_name, None)})
+                mapping.append(
+                    {
+                        "symbol": repr(token),
+                        "value": extracted.get(token.func_name, None),
+                    }
+                )
             else:  # Symbol case
-                mapping.append({"symbol": repr(token), "value": extracted.get(token.expr, None)})
+                mapping.append(
+                    {"symbol": repr(token), "value": extracted.get(token.expr, None)}
+                )
         mapping_list.append(mapping)
     return mapping_list, len(token_lists)
 
@@ -79,19 +93,28 @@ original_completions_create = chat.Completions.create
 
 @functools.wraps(original_completions_create)
 def logged_completions_create(self, *args, **kwargs):
-    logger.info(
+    logger.debug(
         "completions.Completions.create called with args: %s, kwargs: %s", args, kwargs
     )
 
+    ### AST Stuff
+    symbolic_mappings = []
     # Get the caller's source code one level up the stack.
-    source_code = utils.get_caller_source()
-    if source_code:
-        messages = kwargs.get("messages", [])
-        symbolic_mappings, regex_count = get_symbolic_mappings(source_code, messages)
-    else:
-        logger.info("No caller source available.")
+    # source_code = utils.get_caller_source()
+    # if source_code:
+    #     messages = kwargs.get("messages", [])
+    #     symbolic_mappings, regex_count = get_symbolic_mappings(source_code, messages)
+    # else:
+    #     logger.debug("No caller source available.")
 
+    # Make the original call
     result = original_completions_create(self, *args, **kwargs)
+
+    # Get stack frame info
+    caller_frame = inspect.currentframe().f_back
+    frame_info = inspect.getframeinfo(caller_frame, context=20)
+    caller_function_name = caller_frame.f_code.co_name
+    print(f"caller_function_name: {caller_function_name}, {type(caller_function_name)}")
     # logger.info("completions.Completions.create returned: %s", result)
     logged_data = {
         "messages": kwargs.get("messages", []),
@@ -100,6 +123,14 @@ def logged_completions_create(self, *args, **kwargs):
         "response": result.to_dict(),
         "usage": result.usage.to_dict(),
         "timestamp": int(time.time()),
+        "stack_info": {
+            "filename": frame_info.filename,
+            "lineno": frame_info.lineno,
+            "code_context": (
+                frame_info.code_context if frame_info.code_context else ""
+            ),
+            "caller_function_name": caller_frame.f_code.co_name,
+        },
         "call_parameters": {
             "model": kwargs.get("model", ""),
             "temperature": kwargs.get("temperature", 0),
@@ -113,13 +144,15 @@ def logged_completions_create(self, *args, **kwargs):
             **kwargs.get("extra_headers", {}),
         },
     }
-    write_logged_data(logged_data, f"{uuid.uuid4()}.jsonl")
+    write_logged_data(logged_data, output_file_name)
     return result
 
 
 chat.Completions.create = logged_completions_create
 
+
 def main():
+
     if len(sys.argv) < 2:
         print("Usage: python -m subl <script.py>")
         sys.exit(1)

@@ -1,6 +1,7 @@
 # Project specific
 keys.env
 subl_logs/
+dist/
 
 # Top level python ignores
 __pycache__/

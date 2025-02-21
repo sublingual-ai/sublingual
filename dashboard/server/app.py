@@ -2,15 +2,18 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import json
+import argparse
+from flask import Flask, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
+logs_cache = []
 
 @app.route("/")
 def home():
     return jsonify({"message": "Welcome to the Flask Server!"})
-
 
 @app.route("/health")
 def health():
@@ -43,4 +46,9 @@ def get_available_logs():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5360, use_reloader=True)
+    parser = argparse.ArgumentParser(description="Run the Flask server with custom options.")
+    parser.add_argument("--port", type=int, default=5360, help="Port number for the Flask server")
+    parser.add_argument("--log-dir", type=str, default=".", help="Directory to load .jsonl log files from")
+    args = parser.parse_args()
+
+    app.run(debug=True, host="0.0.0.0", port=args.port)

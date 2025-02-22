@@ -5,34 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-
-interface Message {
-  role: string;
-  content: string;
-}
-
-interface StackInfo {
-  filename: string;
-  lineno: number;
-  code_context: string[];
-  caller_function_name: string;
-}
-
-interface LLMRun {
-  messages: Message[];
-  response_texts: string[];
-  timestamp: number;
-  response: {
-    model: string;
-    usage: {
-      total_tokens: number;
-    }
-  };
-  extra_info: {
-    req_id: string;
-  };
-  stack_info: StackInfo;
-}
+import { Message, StackInfo, LLMRun } from "@/types/logs";
 
 const CodePopup = ({
   stackInfo,
@@ -83,7 +56,7 @@ const CodePopup = ({
   if (!isVisible) return null;
 
   // Calculate line numbers and find target line index
-  const codeLines = stackInfo.code_context;
+  const codeLines = 'code_context' in stackInfo ? stackInfo.code_context : [];
   const targetLineIndex = Math.floor(codeLines.length / 2);
 
   return (
@@ -123,41 +96,22 @@ const CodePopup = ({
 };
 
 const truncateText = (text: string) => {
-  const k = 100;
-  if (text.length <= 2 * k) return text;
-  return (
-    <>
-      {text.slice(0, k)}
-      <span className="font-bold text-gray-700"> ( ... ) </span>
-      {text.slice(-k)}
-    </>
-  );
+  const maxLength = 300;
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + '...';
 };
 
-const FullTextDialog = ({
-  text,
-  isOpen,
-  onClose
-}: {
-  text: string;
-  isOpen: boolean;
-  onClose: () => void;
-}) => {
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <div className="overflow-y-auto p-4">
-          <pre className="whitespace-pre-wrap break-words text-sm">{text}</pre>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+const getPreviewText = (messages: Message[], response: string) => {
+  if (messages.length === 0) return '';
+  const lastMessage = messages[messages.length - 1].content;
+  const preview = `${lastMessage} → ${response}`;
+  return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
 };
 
 export const RunsList = () => {
   const { selectedFile } = useLogFile();
   const [runs, setRuns] = useState<LLMRun[]>([]);
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [expandedRuns, setExpandedRuns] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCallers, setSelectedCallers] = useState<string[]>([]);
   const [selectedReqIds, setSelectedReqIds] = useState<string[]>([]);
@@ -179,8 +133,8 @@ export const RunsList = () => {
         if (!res.ok) {
           throw new Error('Failed to fetch logs');
         }
-        const data = await res.json();
-        setRuns(data);
+        const data: LLMRun[] = await res.json();
+        setRuns(data.sort((a, b) => b.timestamp - a.timestamp)); // Sort by timestamp, newest first
       } catch (error) {
         console.error('Error fetching logs:', error);
         setRuns([]);
@@ -217,42 +171,20 @@ export const RunsList = () => {
     return () => document.removeEventListener('keydown', handleEscapeKey);
   }, []);
 
-  const handleCallerClick = (stackInfo: StackInfo, event: React.MouseEvent) => {
-    event.stopPropagation();
-
-    // Close popup if clicking the same caller
-    if (popupInfo &&
-      popupInfo.stackInfo.filename === stackInfo.filename &&
-      popupInfo.stackInfo.lineno === stackInfo.lineno) {
-      setPopupInfo(null);
-      return;
-    }
-
-    // Open popup for new caller
-    const rect = event.currentTarget.getBoundingClientRect();
-    setPopupInfo({
-      stackInfo,
-      position: {
-        x: rect.left + rect.width / 2,
-        y: rect.top
-      }
-    });
+  // Simplified caller info function
+  const getCallerInfo = (run: LLMRun) => {
+    return run.stack_info || null;
   };
 
-  const handleReqIdClick = (reqId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    setSelectedReqIds(prev => [...prev, reqId]);
-    setExpandedIds([]);
-  };
-
-  const removeReqIdFilter = (reqId: string) => {
-    setSelectedReqIds(prev => prev.filter(id => id !== reqId));
-  };
-
-  // Get unique callers from all runs, now including line numbers
-  const allCallers = Array.from(new Set(runs.map(run =>
-    `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`
-  )));
+  // Get unique callers from all runs
+  const allCallers = Array.from(new Set(runs
+    .map(run => {
+      const info = getCallerInfo(run);
+      if (!info) return null;
+      return `${info.filename}::${info.caller_function_name}():${info.lineno}`;
+    })
+    .filter((caller): caller is string => caller !== null)
+  ));
 
   const toggleCaller = (caller: string) => {
     setSelectedCallers(prev =>
@@ -262,13 +194,16 @@ export const RunsList = () => {
     );
   };
 
-  // First group all runs by caller
+  // Update grouping logic
   const allGroupedRuns = runs.reduce((acc, run) => {
-    const caller = `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`;
-    if (!acc[caller]) {
-      acc[caller] = [];
+    const info = getCallerInfo(run);
+    if (!info) return acc;
+    
+    const callerKey = `${info.filename}::${info.caller_function_name}():${info.lineno}`;
+    if (!acc[callerKey]) {
+      acc[callerKey] = [];
     }
-    acc[caller].push(run);
+    acc[callerKey].push(run);
     return acc;
   }, {} as Record<string, LLMRun[]>);
 
@@ -298,13 +233,68 @@ export const RunsList = () => {
     );
   };
 
-  // Update expandedGroups when runs change
+  // Update expandedGroups effect
   useEffect(() => {
-    const allCallers = runs.map(run =>
-      `${run.stack_info.filename}::${run.stack_info.caller_function_name}():${run.stack_info.lineno}`
-    );
+    const allCallers = runs
+      .map(run => {
+        const info = getCallerInfo(run);
+        if (!info) return null;
+        return `${info.filename}::${info.caller_function_name}():${info.lineno}`;
+      })
+      .filter((caller): caller is string => caller !== null);
     setExpandedGroups(Array.from(new Set(allCallers)));
   }, [runs]);
+
+  // Update handleCallerClick
+  const handleCallerClick = (run: LLMRun, event: React.MouseEvent) => {
+    event.stopPropagation();
+    
+    if (!run.stack_info) return;
+
+    // Close popup if clicking the same caller
+    if (popupInfo &&
+      popupInfo.stackInfo.filename === run.stack_info.filename &&
+      popupInfo.stackInfo.lineno === run.stack_info.lineno) {
+      setPopupInfo(null);
+      return;
+    }
+
+    // Open popup for new caller
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPopupInfo({
+      stackInfo: run.stack_info,
+      position: {
+        x: rect.left + rect.width / 2,
+        y: rect.top
+      }
+    });
+  };
+
+  const handleReqIdClick = (reqId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setSelectedReqIds(prev => [...prev, reqId]);
+    setExpandedRuns([]);
+  };
+
+  const removeReqIdFilter = (reqId: string) => {
+    setSelectedReqIds(prev => prev.filter(id => id !== reqId));
+  };
+
+  const toggleRun = (runId: string) => {
+    setExpandedRuns(prev =>
+      prev.includes(runId)
+        ? prev.filter(id => id !== runId)
+        : [...prev, runId]
+    );
+  };
+
+  const filteredRuns = runs.filter(run =>
+    run.messages.some(msg =>
+      msg.content.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || run.response_texts.some(text =>
+      text.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
@@ -314,7 +304,7 @@ export const RunsList = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Search messages and responses..."
+            placeholder="Search in runs..."
             className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -366,127 +356,84 @@ export const RunsList = () => {
         <div className="flex-1 flex items-center justify-center">
           <Spinner className="w-8 h-8 text-primary-500" />
         </div>
-      ) : runs.length > 0 ? (
-        <ScrollArea className="flex-1 overflow-auto">
+      ) : filteredRuns.length > 0 ? (
+        <ScrollArea className="flex-1">
           <div className="divide-y divide-gray-100">
-            {Object.entries(filteredGroupedRuns).map(([caller, runs]) => (
-              <div key={caller} className="border-b border-gray-200">
-                <div
-                  className="bg-gray-50 px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => toggleGroup(caller)}
-                >
-                  <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Tag className="w-4 h-4 mr-2" />
-                      <span
-                        className="hover:text-primary-700"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCallerClick(runs[0].stack_info, e);
-                        }}
-                      >
-                        {caller}
+            {filteredRuns.map((run, index) => {
+              const runId = `run-${index}`;
+              const isExpanded = expandedRuns.includes(runId);
+              
+              return (
+                <div key={runId} className="transition-colors">
+                  <div
+                    className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => toggleRun(runId)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          )}
+                          <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                            {getPreviewText(run.messages, run.response_texts[0])}
+                          </h3>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-1">
+                          {run.stack_info && (
+                            <Badge variant="outline" className="text-xs text-primary-700">
+                              {run.stack_info.filename}:{run.stack_info.lineno}
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-xs text-primary-700">
+                            {run.response.model}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                            {run.response.usage.total_tokens} tokens
+                          </Badge>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(run.timestamp * 1000).toLocaleString()}
                       </span>
                     </div>
-                    {expandedGroups.includes(caller) ? (
-                      <ChevronUp className="w-4 h-4 text-gray-500" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
-                    )}
-                  </h3>
-                </div>
-                <div
-                  className={`transition-all duration-200 ${expandedGroups.includes(caller) ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
-                    }`}
-                >
-                  {expandedGroups.includes(caller) && runs.map((run, index) => {
-                    const entryId = `${caller}-${index}`;
-                    return (
-                      <div
-                        key={entryId}
-                        className="transition-colors"
-                      >
-                        <div
-                          className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                          onClick={() => {
-                            setExpandedIds(prev => 
-                              prev.includes(entryId) 
-                                ? prev.filter(id => id !== entryId)
-                                : [...prev, entryId]
-                            );
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                                  {run.messages[run.messages.length - 1].content}
-                                </h3>
-                                {expandedIds.includes(entryId) ? (
-                                  <ChevronUp className="w-4 h-4 text-gray-500" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-2 mt-1">
-                                {run.extra_info.req_id && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs text-primary-700 cursor-pointer"
-                                    onClick={(e) => handleReqIdClick(run.extra_info.req_id, e)}
-                                  >
-                                    req: {run.extra_info.req_id}
-                                  </Badge>
-                                )}
-                                <Badge variant="outline" className="text-xs text-primary-700">
-                                  {run.response.model}
-                                </Badge>
-                                <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                                  {run.response.usage.total_tokens} tokens
-                                </Badge>
-                              </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="px-4 pb-4">
+                      <div className="space-y-3 text-sm">
+                        {run.messages.map((msg, msgIndex) => (
+                          <div key={msgIndex}>
+                            <div className="font-medium text-gray-700">{msg.role}:</div>
+                            <div 
+                              className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+                              onClick={() => setFullTextContent(msg.content)}
+                            >
+                              {truncateText(msg.content)}
                             </div>
-                            <span className="text-xs text-gray-500">
-                              {new Date(run.timestamp * 1000).toLocaleString()}
-                            </span>
                           </div>
+                        ))}
+                        <div>
+                          <div className="font-medium text-gray-700">Responses:</div>
+                          {run.response_texts.map((text, respIndex) => (
+                            <div 
+                              key={respIndex} 
+                              className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+                              onClick={() => setFullTextContent(text)}
+                            >
+                              <span className="font-mono text-xs text-gray-500 mr-2">[{respIndex}]</span>
+                              {truncateText(text)}
+                            </div>
+                          ))}
                         </div>
-                        {expandedIds.includes(entryId) && (
-                          <div className="px-4 pb-4">
-                            <div className="space-y-3 text-sm">
-                              {run.messages.map((msg, msgIndex) => (
-                                <div key={msgIndex}>
-                                  <div className="font-medium text-gray-700">{msg.role}:</div>
-                                  <div 
-                                    className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
-                                    onClick={() => setFullTextContent(msg.content)}
-                                  >
-                                    {truncateText(msg.content)}
-                                  </div>
-                                </div>
-                              ))}
-                              <div>
-                                <div className="font-medium text-gray-700">Responses:</div>
-                                {run.response_texts.map((text, respIndex) => (
-                                  <div 
-                                    key={respIndex} 
-                                    className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
-                                    onClick={() => setFullTextContent(text)}
-                                  >
-                                    <span className="font-mono text-xs text-gray-500 mr-2">[{respIndex}]</span>
-                                    {truncateText(text)}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       ) : (
@@ -502,11 +449,15 @@ export const RunsList = () => {
         onClose={() => setPopupInfo(null)}
       />
 
-      <FullTextDialog
-        text={fullTextContent || ""}
-        isOpen={!!fullTextContent}
-        onClose={() => setFullTextContent(null)}
-      />
+      <Dialog open={!!fullTextContent} onOpenChange={() => setFullTextContent(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <div className="overflow-y-auto p-4">
+            <pre className="whitespace-pre-wrap break-words text-sm">
+              {fullTextContent}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--log-dir", type=str, default=".", help="Directory to load .jsonl log files from")
     args = parser.parse_args()
 
+    # Use the absolute path as provided
     log_dir = args.log_dir
 
     app.run(debug=True, host="0.0.0.0", port=args.port)

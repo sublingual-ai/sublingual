@@ -112,58 +112,57 @@ export const SessionsList = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredSessions.map((session) => (
-                <React.Fragment key={session.sessionId}>
-                  <tr 
-                    className={`group hover:bg-gray-50 cursor-pointer ${
-                      expandedSessions.includes(session.sessionId) ? 'bg-gray-50' : ''
-                    }`}
-                    onClick={() => toggleSession(session.sessionId)}
-                  >
-                    <td className="px-4 py-2">
-                      <div className="flex items-center space-x-2">
-                        {expandedSessions.includes(session.sessionId) ? (
-                          <ChevronUp className="w-4 h-4 text-gray-500" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-gray-500" />
-                        )}
-                        <Hash className="w-4 h-4" />
-                        <span className="text-sm font-medium text-gray-700">
-                          {session.sessionId === 'unassigned' ? 'Unassigned Calls' : session.sessionId}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {session.callCount} calls
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500 whitespace-nowrap">
-                      {new Date(session.firstCall * 1000).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500 whitespace-nowrap">
-                      {new Date(session.lastCall * 1000).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                        {session.totalTokens} tokens
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2 text-gray-400">
-                      <div className="invisible group-hover:visible">
-                        {expandedSessions.includes(session.sessionId) ? '↑' : '↓'}
-                      </div>
+              {filteredSessions.map((session) => [
+                <tr 
+                  key={`${session.sessionId}-row`}
+                  className={`group hover:bg-gray-50 cursor-pointer ${
+                    expandedSessions.includes(session.sessionId) ? 'bg-gray-50' : ''
+                  }`}
+                  onClick={() => toggleSession(session.sessionId)}
+                >
+                  <td className="px-4 py-2">
+                    <div className="flex items-center space-x-2">
+                      {expandedSessions.includes(session.sessionId) ? (
+                        <ChevronUp className="w-4 h-4 text-gray-500" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                      )}
+                      <Hash className="w-4 h-4" />
+                      <span className="text-sm font-medium text-gray-700">
+                        {session.sessionId === 'unassigned' ? 'Unassigned Calls' : session.sessionId}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {session.callCount} calls
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-2 text-sm text-gray-500 whitespace-nowrap">
+                    {new Date(session.firstCall * 1000).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-gray-500 whitespace-nowrap">
+                    {new Date(session.lastCall * 1000).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2">
+                    <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+                      {session.totalTokens} tokens
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-2 text-gray-400">
+                    <div className="invisible group-hover:visible">
+                      {expandedSessions.includes(session.sessionId) ? '↑' : '↓'}
+                    </div>
+                  </td>
+                </tr>,
+                expandedSessions.includes(session.sessionId) && (
+                  <tr key={`${session.sessionId}-details`}>
+                    <td colSpan={6} className="px-4 py-2 bg-gray-50">
+                      <SessionDetails runs={session.runs} />
                     </td>
                   </tr>
-                  {expandedSessions.includes(session.sessionId) && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-2 bg-gray-50">
-                        <SessionDetails runs={session.runs} />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
+                )
+              ])}
             </tbody>
           </table>
         </ScrollArea>

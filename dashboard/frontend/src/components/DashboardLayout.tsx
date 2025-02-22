@@ -38,6 +38,12 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
     log.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getDisplayName = (fullPath: string) => {
+    // Extract everything after the last slash and before .jsonl
+    const match = fullPath.match(/\/([^/]+)\.jsonl$/);
+    return match ? match[1] : fullPath;
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gray-50">
@@ -73,7 +79,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
                           onClick={() => setSelectedFile(log)}
                         >
                           <FileText className="w-4 h-4 mr-2" />
-                          {log}
+                          {getDisplayName(log)}
                         </button>
                       ))
                     ) : (

@@ -2,6 +2,7 @@
 keys.env
 subl_logs/
 dist/
+build/
 
 # Top level python ignores
 __pycache__/

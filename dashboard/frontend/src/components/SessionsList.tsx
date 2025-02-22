@@ -28,25 +28,45 @@ export const SessionsList = () => {
         }
         const data: LLMRun[] = await res.json();
         
-        // Group runs by session_id and create SessionRows
-        const groupedSessions = data.reduce((acc, run) => {
-          const sessionId = run.session_id || 'unassigned';
-          if (!acc[sessionId]) {
-            acc[sessionId] = [];
+        // Group runs by session_id, treating null/undefined sessions as individual items
+        const sessionRows = data.reduce((acc: SessionRow[], run) => {
+          if (!run.session_id) {
+            // Create individual session for runs without session_id
+            // Generate unique ID using timestamp and random suffix
+            const uniqueId = `single-${run.timestamp}-${Math.random().toString(36).substr(2, 5)}`;
+            acc.push({
+              sessionId: uniqueId,
+              runs: [run],
+              callCount: 1,
+              firstCall: run.timestamp,
+              lastCall: run.timestamp,
+              totalTokens: run.response.usage.total_tokens
+            });
+          } else {
+            // Find or create session group
+            let sessionGroup = acc.find(s => s.sessionId === run.session_id);
+            if (!sessionGroup) {
+              sessionGroup = {
+                sessionId: run.session_id,
+                runs: [],
+                callCount: 0,
+                firstCall: run.timestamp,
+                lastCall: run.timestamp,
+                totalTokens: 0
+              };
+              acc.push(sessionGroup);
+            }
+            sessionGroup.runs.push(run);
+            sessionGroup.callCount++;
+            sessionGroup.firstCall = Math.min(sessionGroup.firstCall, run.timestamp);
+            sessionGroup.lastCall = Math.max(sessionGroup.lastCall, run.timestamp);
+            sessionGroup.totalTokens += run.response.usage.total_tokens;
           }
-          acc[sessionId].push(run);
           return acc;
-        }, {} as Record<string, LLMRun[]>);
+        }, []);
 
-        // Convert to SessionRow array
-        const sessionRows = Object.entries(groupedSessions).map(([sessionId, runs]) => ({
-          sessionId,
-          runs: runs.sort((a, b) => a.timestamp - b.timestamp),
-          callCount: runs.length,
-          firstCall: runs[0].timestamp,
-          lastCall: runs[runs.length - 1].timestamp,
-          totalTokens: runs.reduce((sum, run) => sum + run.response.usage.total_tokens, 0)
-        }));
+        // Sort sessions by timestamp
+        sessionRows.sort((a, b) => b.lastCall - a.lastCall);
 
         setSessions(sessionRows);
       } catch (error) {
@@ -129,7 +149,9 @@ export const SessionsList = () => {
                       )}
                       <Hash className="w-4 h-4" />
                       <span className="text-sm font-medium text-gray-700">
-                        {session.sessionId === 'unassigned' ? 'Unassigned Calls' : session.sessionId}
+                        {session.runs.length === 1 && !session.runs[0].session_id
+                          ? `Single Call (${session.sessionId})`
+                          : session.sessionId}
                       </span>
                     </div>
                   </td>

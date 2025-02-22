@@ -51,7 +51,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gray-50">
+      <div className="h-screen flex w-full bg-gray-50">
         <Sidebar>
           <SidebarContent>
             <SidebarGroup>
@@ -108,7 +108,9 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
             </SidebarGroup>
           </SidebarContent>
         </Sidebar>
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1 p-8 overflow-hidden flex flex-col">
+          {children}
+        </main>
       </div>
     </SidebarProvider>
   );

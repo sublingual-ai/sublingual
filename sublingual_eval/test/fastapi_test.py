@@ -39,6 +39,7 @@ async def chat_with_openai(prompt: str = Form(...)):
             messages=[{"role": "user", "content": prompt}]
         )
         message1 = response.choices[0].message.content
+        
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": message1}]

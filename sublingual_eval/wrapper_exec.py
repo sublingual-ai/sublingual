@@ -8,25 +8,38 @@ logger = logging.getLogger("sublingual")
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler())
 
-# Import our logging setup functions
-from sublingual_eval.openai_logger import setup_openai_logging, setup_openai_async_logging
-from sublingual_eval.fastapi_logger import setup_fastapi_logging
+from sublingual_eval.initialization import init, handle_pth
 
-def init():
-    """Initialize all logging functionality"""
-    setup_openai_logging()
-    setup_openai_async_logging()
-    setup_fastapi_logging()
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python -m subl <script.py>")
+        print("Usage: subl <script.py>")
         sys.exit(1)
-    init()  # Initialize logging only when running a script
-    script = sys.argv[1]
-    # Adjust sys.argv so that the target script sees its own arguments
-    sys.argv = sys.argv[1:]
-    runpy.run_path(script, run_name="__main__")
+
+    handle_pth()  # Write .pth file to enable logging on all python calls
+    # Env vars to select which modules to patch
+    os.environ["SUBL_PATCH_OPENAI"] = "1"
+    os.environ["SUBL_PATCH_FASTAPI"] = "1"
+
+    init()
+
+    # Pretty print the running command
+    if sys.argv[1] == "-m":
+        if len(sys.argv) < 3:
+            print("Usage: subl -m <module>")
+            sys.exit(1)
+        print("\033[94m[sublingual]\033[0m Running:", " ".join(sys.argv[2:]))
+        module = sys.argv[2]
+        # Adjust sys.argv so that the target module sees its own arguments
+        sys.argv = sys.argv[2:]
+        runpy.run_module(module, run_name="__main__", alter_sys=True)
+    else:
+        print("\033[94m[sublingual]\033[0m Running:", " ".join(sys.argv[1:]))
+        script = sys.argv[1]
+        # Adjust sys.argv so that the target script sees its own arguments
+        sys.argv = sys.argv[1:]
+        runpy.run_path(script, run_name="__main__")
+
 
 if __name__ == "__main__":
     main()

@@ -68,7 +68,7 @@ def setup_openai_logging():
         # Make the original call
         result = original_completions_create(self, *args, **kwargs)
         try:
-            logger.debug(request_id_ctx_var.get())
+            logger.debug(f"Request ID: {request_id_ctx_var.get()}")
             logger.debug(
                 "completions.Completions.create called with args: %s, kwargs: %s",
                 args,

@@ -109,7 +109,14 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
 
 export const CallHierarchy = ({ runs, selectedSessionId }: CallHierarchyProps) => {
   const buildHierarchy = (runs: LLMRun[]) => {
-    const filteredRuns = runs.filter(run => run.session_id === selectedSessionId);
+    const filteredRuns = runs.filter(run => {
+      if (run.session_id) {
+        return run.session_id === selectedSessionId;
+      } else {
+        return selectedSessionId?.startsWith('single-') && 
+               selectedSessionId.includes(run.timestamp.toString());
+      }
+    });
     
     const nodeMap = new Map<string, CallNode>();
     

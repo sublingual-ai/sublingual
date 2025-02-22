@@ -38,25 +38,44 @@ const Dashboard = () => {
         const data: LLMRun[] = await res.json();
         setRuns(data);
 
-        // Group runs by session_id and create SessionRows
-        const groupedSessions = data.reduce((acc, run) => {
-          const sessionId = run.session_id || 'unassigned';
-          if (!acc[sessionId]) {
-            acc[sessionId] = [];
+        // Group runs by session_id, treating null/undefined sessions as individual items
+        const sessionRows = data.reduce((acc: SessionRow[], run) => {
+          if (!run.session_id) {
+            // Create individual session for runs without session_id
+            const uniqueId = `single-${run.timestamp}-${Math.random().toString(36).substr(2, 5)}`;
+            acc.push({
+              sessionId: uniqueId,
+              runs: [run],
+              callCount: 1,
+              firstCall: run.timestamp,
+              lastCall: run.timestamp,
+              totalTokens: run.response.usage.total_tokens
+            });
+          } else {
+            // Find or create session group
+            let sessionGroup = acc.find(s => s.sessionId === run.session_id);
+            if (!sessionGroup) {
+              sessionGroup = {
+                sessionId: run.session_id,
+                runs: [],
+                callCount: 0,
+                firstCall: run.timestamp,
+                lastCall: run.timestamp,
+                totalTokens: 0
+              };
+              acc.push(sessionGroup);
+            }
+            sessionGroup.runs.push(run);
+            sessionGroup.callCount++;
+            sessionGroup.firstCall = Math.min(sessionGroup.firstCall, run.timestamp);
+            sessionGroup.lastCall = Math.max(sessionGroup.lastCall, run.timestamp);
+            sessionGroup.totalTokens += run.response.usage.total_tokens;
           }
-          acc[sessionId].push(run);
           return acc;
-        }, {} as Record<string, LLMRun[]>);
+        }, []);
 
-        // Convert to SessionRow array
-        const sessionRows = Object.entries(groupedSessions).map(([sessionId, runs]) => ({
-          sessionId,
-          runs: runs.sort((a, b) => a.timestamp - b.timestamp),
-          callCount: runs.length,
-          firstCall: runs[0].timestamp,
-          lastCall: runs[runs.length - 1].timestamp,
-          totalTokens: runs.reduce((sum, run) => sum + run.response.usage.total_tokens, 0)
-        }));
+        // Sort sessions by timestamp
+        sessionRows.sort((a, b) => b.lastCall - a.lastCall);
 
         setSessions(sessionRows);
       } catch (error) {
@@ -68,6 +87,12 @@ const Dashboard = () => {
 
     fetchData();
   }, [selectedFile]);
+
+  useEffect(() => {
+    if (view === 'trace' && !selectedSessionId && sessions.length > 0) {
+      setSelectedSessionId(sessions[0].sessionId);
+    }
+  }, [view, sessions, selectedSessionId]);
 
   return (
     <DashboardLayout>
@@ -108,50 +133,60 @@ const Dashboard = () => {
         <div className="flex-1 min-h-0">
           {view === 'runs' && <RunsList />}
           {view === 'sessions' && <SessionsList />}
-          {view === 'trace' && selectedSessionId && (
+          {view === 'trace' && (
             <div className="flex h-full gap-4">
-              <div className="flex-1">
-                <CallHierarchy 
-                  runs={runs} 
-                  selectedSessionId={selectedSessionId} 
-                />
-              </div>
-              
-              <div className="w-64 bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col">
-                <div className="p-4 border-b border-gray-100">
-                  <h3 className="text-sm font-medium text-gray-700">Sessions</h3>
-                </div>
-                <ScrollArea className="flex-1">
-                  <div className="p-2">
-                    {sessions.map(session => (
-                      <button
-                        key={session.sessionId}
-                        className={`w-full text-left mt-1 px-3 py-2 rounded-md transition-colors ${
-                          selectedSessionId === session.sessionId 
-                            ? 'bg-primary-50 text-primary-900' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                        onClick={() => setSelectedSessionId(session.sessionId)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Hash className="w-4 h-4" />
-                          <span className="text-sm font-medium">
-                            {session.sessionId === 'unassigned' ? 'Unassigned' : `Session ${session.sessionId}`}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {session.callCount} calls
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {session.totalTokens} tokens
-                          </Badge>
-                        </div>
-                      </button>
-                    ))}
+              {sessions.length > 0 ? (
+                <>
+                  <div className="flex-1">
+                    <CallHierarchy 
+                      runs={runs} 
+                      selectedSessionId={selectedSessionId || sessions[0].sessionId} 
+                    />
                   </div>
-                </ScrollArea>
-              </div>
+                  
+                  <div className="w-64 bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col">
+                    <div className="p-4 border-b border-gray-100">
+                      <h3 className="text-sm font-medium text-gray-700">Sessions</h3>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      <div className="p-2">
+                        {sessions.map(session => (
+                          <button
+                            key={session.sessionId}
+                            className={`w-full text-left mt-1 px-3 py-2 rounded-md transition-colors ${
+                              selectedSessionId === session.sessionId 
+                                ? 'bg-primary-50 text-primary-900' 
+                                : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => setSelectedSessionId(session.sessionId)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Hash className="w-4 h-4" />
+                              <span className="text-sm font-medium">
+                                {session.runs.length === 1 && !session.runs[0].session_id
+                                  ? `Single Call ${session.sessionId.slice(0, 8)}...`
+                                  : `Session ${session.sessionId}`}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {session.callCount} calls
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {session.totalTokens} tokens
+                              </Badge>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-500">
+                  No sessions available
+                </div>
+              )}
             </div>
           )}
         </div>

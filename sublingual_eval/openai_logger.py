@@ -14,16 +14,13 @@ logger = logging.getLogger("sublingual")
 # Context variable for request tracking
 request_id_ctx_var = contextvars.ContextVar("request_id", default=None)
 
-# Configure logging directory
-subl_logs_path = "subl_logs/"
-if not os.path.exists(subl_logs_path):
-    os.makedirs(subl_logs_path)
 
 output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
 
-def write_logged_data(logged_data, file_name):
+def write_logged_data(subl_logs_path, logged_data, file_name):
     with open(os.path.join(subl_logs_path, file_name), "a") as f:
         f.write(json.dumps(logged_data) + "\n")
+    print(f"Logged data written to {os.path.join(subl_logs_path, file_name)}")
 
 def create_logged_data(result, args, kwargs, caller_frame):
     """Create the logged data dictionary from a completion result"""
@@ -73,7 +70,7 @@ def create_logged_data(result, args, kwargs, caller_frame):
         },
     }
 
-def setup_openai_logging():
+def setup_openai_logging(subl_logs_path: str):
     """Set up synchronous logging for OpenAI completions"""
     original_completions_create = chat.Completions.create
 
@@ -91,7 +88,7 @@ def setup_openai_logging():
 
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)
-            write_logged_data(logged_data, output_file_name)
+            write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_create: %s", e)
         finally:
@@ -99,7 +96,7 @@ def setup_openai_logging():
 
     chat.Completions.create = logged_completions_create
 
-def setup_openai_async_logging():
+def setup_openai_async_logging(subl_logs_path: str):
     """Set up asynchronous logging for OpenAI completions"""
     original_acreate = chat.AsyncCompletions.create
 
@@ -117,7 +114,7 @@ def setup_openai_async_logging():
 
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)
-            write_logged_data(logged_data, output_file_name)
+            write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_acreate: %s", e)
         finally:

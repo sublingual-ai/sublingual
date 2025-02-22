@@ -4,13 +4,14 @@ import { RunsList } from "@/components/RunsList";
 import { SessionsList } from "@/components/SessionsList";
 import { CallHierarchy } from "@/components/CallHierarchy";
 import { Button } from "@/components/ui/button";
-import { ListTree, GitBranch, Network, Hash } from "lucide-react";
+import { ListTree, GitBranch, Network, Hash, BarChart } from "lucide-react";
 import { LogFileProvider, useLogFile } from "@/contexts/LogFileContext";
 import { LLMRun, SessionRow } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { MetricsView } from "@/components/MetricsView";
 
-type ViewType = 'runs' | 'sessions' | 'trace';
+type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics';
 
 const Dashboard = () => {
   const [view, setView] = useState<ViewType>(() => {
@@ -128,11 +129,20 @@ const Dashboard = () => {
             <Network className="w-4 h-4 mr-2" />
             Trace View
           </Button>
+          <Button
+            variant={view === 'metrics' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setView('metrics')}
+          >
+            <BarChart className="w-4 h-4 mr-2" />
+            Metrics View
+          </Button>
         </div>
         
         <div className="flex-1 min-h-0">
           {view === 'runs' && <RunsList />}
           {view === 'sessions' && <SessionsList />}
+          {view === 'metrics' && <MetricsView runs={runs} />}
           {view === 'trace' && (
             <div className="flex h-full gap-4">
               {sessions.length > 0 ? (

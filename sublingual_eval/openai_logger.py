@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from openai.resources.chat import chat
 import contextvars
-
+import uuid
 # Set up logging
 logger = logging.getLogger("sublingual")
 
@@ -50,6 +50,7 @@ def create_logged_data(result, args, kwargs, caller_frame):
     print(stack_info)
     
     return {
+        "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),
         "messages": kwargs.get("messages", []),
         "response_texts": [choice.message.content for choice in result.choices],

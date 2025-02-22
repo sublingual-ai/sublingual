@@ -5,30 +5,66 @@ import json
 import argparse
 from flask import Flask, jsonify
 from flask_cors import CORS
+from evaluations.simple_evaluations import (
+    random_0_100,
+    user_sentiment,
+    system_prompt_obedience,
+    correctness,
+)
 
 app = Flask(__name__)
 CORS(app)
 
 log_dir = ""
 
+
 @app.route("/")
 def home():
     return jsonify({"message": "Welcome to the Flask Server!"})
+
 
 @app.route("/health")
 def health():
     return jsonify({"status": "healthy"})
 
 
+@app.route("/evaluate", methods=["POST"])
+def evaluate():
+    data = request.json
+    run_id = data.get("run_id", "")
+    run_data = data.get("run", {})
+    criteria = data.get("criteria", [])
+    # TODO: Implement actual evaluation logic
+    # For now, return random scores for the requested criteria
+    results = {criterion: "X" for criterion in criteria}
+    print(criteria)
+    if "correctness" in criteria:
+        results["correctness"] = correctness(run_data["messages"], run_data["response"])
+    if "user_sentiment" in criteria:
+        results["user_sentiment"] = user_sentiment(
+            run_data["messages"], run_data["response"]
+        )
+    if "system_prompt_obedience" in criteria:
+        results["system_prompt_obedience"] = system_prompt_obedience(
+            run_data["messages"], run_data["response"]
+        )
+
+    return jsonify({"scores": results})
+
+
 @app.route("/get_log")
 def get_log():
     filename = request.args.get("filename", "")
     try:
-        obj = []
+        all_logs = []
         with open(filename, "r") as f:
             for line in f:
-                obj.append(json.loads(line))
-        return jsonify(obj)
+                obj = json.loads(line)
+                # Coalesce session_id from extra_headers if it's not present
+                if obj["session_id"] is None:
+                    obj["session_id"] = obj.get("extra_info", {}).get("req_id", None)
+                all_logs.append(obj)
+        return jsonify(all_logs)
     except FileNotFoundError:
         return jsonify({"error": f"Log file {filename} not found"}), 404
     except json.JSONDecodeError:
@@ -46,9 +82,18 @@ def get_available_logs():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the Flask server with custom options.")
-    parser.add_argument("--port", type=int, default=5360, help="Port number for the Flask server")
-    parser.add_argument("--log-dir", type=str, default=".", help="Directory to load .jsonl log files from")
+    parser = argparse.ArgumentParser(
+        description="Run the Flask server with custom options."
+    )
+    parser.add_argument(
+        "--port", type=int, default=5360, help="Port number for the Flask server"
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default=".",
+        help="Directory to load .jsonl log files from",
+    )
     args = parser.parse_args()
 
     # Use the absolute path as provided

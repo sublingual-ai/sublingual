@@ -10,7 +10,7 @@ from evaluations.simple_evaluations import (
     user_sentiment,
     system_prompt_obedience,
     correctness,
-    initialize_client
+    initialize_client,
 )
 
 app = Flask(__name__)
@@ -35,12 +35,14 @@ def evaluate():
     run_id = data.get("run_id", "")
     run_data = data.get("run", {})
     criteria = data.get("criteria", [])
-    
-    results = {criterion: "X" for criterion in criteria}
+
+    results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
         print(criteria)
         if "correctness" in criteria:
-            results["correctness"] = correctness(run_data["messages"], run_data["response"])
+            results["correctness"] = correctness(
+                run_data["messages"], run_data["response"]
+            )
         if "user_sentiment" in criteria:
             results["user_sentiment"] = user_sentiment(
                 run_data["messages"], run_data["response"]
@@ -52,16 +54,18 @@ def evaluate():
         return jsonify({"scores": results})
     except AttributeError as e:
         if "NoneType" in str(e):
-            return jsonify({
-                "error": "OpenAI client not initialized. Make sure OPENAI_API_KEY is set in your environment file.",
-                "details": str(e)
-            }), 503
+            return (
+                jsonify(
+                    {
+                        "error": "OpenAI client not initialized. Make sure OPENAI_API_KEY is set in your environment file.",
+                        "details": str(e),
+                    }
+                ),
+                503,
+            )
         raise
     except Exception as e:
-        return jsonify({
-            "error": "Evaluation failed",
-            "details": str(e)
-        }), 500
+        return jsonify({"error": "Evaluation failed", "details": str(e)}), 500
 
 
 @app.route("/get_log")
@@ -116,7 +120,7 @@ if __name__ == "__main__":
 
     # Use the absolute path as provided
     log_dir = args.log_dir
-    
+
     # Initialize the OpenAI client
     initialize_client(args.env_file)
 

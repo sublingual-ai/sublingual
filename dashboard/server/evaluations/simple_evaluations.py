@@ -24,7 +24,7 @@ def extract_boxed(s):
     # Use regex to extract the last boxed number
     matches = re.findall(r"\\boxed\{(.*)\}", s)
     if not matches:
-        return "x"  # Return default value if no boxed numbers found
+        return "<NO_SCORE>"  # Return default value if no boxed numbers found
     return matches[-1]
 
 
@@ -51,24 +51,35 @@ def random_0_100():
 
 def user_sentiment(messages, response):
     strified_history = "\n\n".join([f"{m['role']}: {m['content']}" for m in messages])
+    system_prompt = dedent(
+        f"""
+        You are a helpful assistant that evaluates the user's sentiment towards a given response.
+        Return a score between 0 and 100 for the user's sentiment towards the response.
+        - Do NOT say anything else, ONLY output the score.
+        - Give a lower score for negative sentiment, and a higher score for positive sentiment.
+        - 0 means the user is very negative towards the response
+        - 100 means the user is very positive towards the response
+        - 50 means the user is neutral towards the response
+        - Put your answer in \\boxed{{}}
+        """
+    )
     prompt = dedent(
         f"""
         You are a helpful assistant that evaluates the user's sentiment towards a given response.
         Here is the conversation history:
         {strified_history}
-        Return a score between 0 and 100 for the user's sentiment towards the response.
-        - Do NOT say anything else, ONLY output the score.
-        - Give a lower score for negative sentiment, and a higher score for positive sentiment.
-        - Put your answer in \\boxed{{}}
+        
+        Rate the user's sentiment in the conversation.
         """
     )
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        temperature=1.0,
     )
+    print(res.choices[0].message.content)
     return extract_boxed(res.choices[0].message.content)
 
 
@@ -107,7 +118,6 @@ def system_prompt_obedience(messages, response_object):
         messages=[
             {"role": "user", "content": prompt},
         ],
-        temperature=1.0,
     )
     return extract_boxed(res.choices[0].message.content)
 

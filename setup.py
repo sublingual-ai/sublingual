@@ -11,7 +11,7 @@ setup(
     entry_points={
         'console_scripts': [
             'subl=sublingual_eval.subl:main',
-            'subl-server=dashboard.run_servers:main',
+            # 'subl-server=dashboard.run_servers:main',
         ],
     },
     license="MIT",

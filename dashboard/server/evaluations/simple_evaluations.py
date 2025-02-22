@@ -2,10 +2,22 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from textwrap import dedent
 import re
+import os
 
-load_dotenv("keys.env")
+# Remove the global client initialization
+client = None
 
-client = OpenAI()
+def initialize_client(env_file):
+    global client
+    load_dotenv(env_file)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        client = OpenAI(api_key=api_key)
+    else:
+        RED = '\033[91m'
+        RESET = '\033[0m'
+        print(f"{RED}❌ No OpenAI API key found in environment file: {env_file}{RESET}")
+        return None
 
 
 def extract_boxed(s):

@@ -27,11 +27,26 @@ def handle_pth():
         print(f"\033[96m└─\033[0m Error: {str(e)}")
 
 
+def create_subl_logs_dir():
+    if not os.path.exists("subl_logs"):
+        os.makedirs("subl_logs")
+
 def init():
     """Initialize all logging functionality"""
+
+    # Create the sublingual logs directory
+    if (os.getenv("SUBL_PATCH_OPENAI", "0") == "1" or
+        os.getenv("SUBL_PATCH_FASTAPI", "0") == "1"):
+        subl_logs_path = os.path.join(os.getcwd(), ".sublingual", "logs")
+        if not os.path.exists(os.path.join(os.getcwd(), ".sublingual")):
+            os.makedirs(os.path.join(os.getcwd(), ".sublingual"))
+        if not os.path.exists(subl_logs_path):
+            os.makedirs(subl_logs_path)
+    
+    # Setup logging
     if os.getenv("SUBL_PATCH_OPENAI", "0") == "1":
-        setup_openai_logging()
-        setup_openai_async_logging()
+        setup_openai_logging(subl_logs_path)
+        setup_openai_async_logging(subl_logs_path)
     if os.getenv("SUBL_PATCH_FASTAPI", "0") == "1":
         setup_fastapi_logging()
     print(

@@ -56,4 +56,18 @@ export interface SessionRow {
   firstCall: number;
   lastCall: number;
   totalTokens: number;
+}
+
+export interface CallNode {
+  filename: string;
+  function: string;
+  lineno: number;
+  children: CallNode[];
+  runs: LLMRun[];
+  totalDescendantRuns?: number;
+}
+
+export interface HierarchyData {
+  nodes: CallNode[];
+  sessionId?: string;
 } 

@@ -27,7 +27,27 @@ def write_logged_data(logged_data, file_name):
 
 def create_logged_data(result, args, kwargs, caller_frame):
     """Create the logged data dictionary from a completion result"""
-    frame_info = inspect.getframeinfo(caller_frame, context=20)
+    # Get the full stack trace
+    stack = inspect.stack()
+    stack_info = []
+    
+    project_root = os.getcwd()
+    for frame_info in reversed(stack):
+        filename = frame_info.filename
+        abs_filename = os.path.abspath(filename)
+
+        if not abs_filename.startswith(project_root):
+            continue
+
+        code_context = frame_info.code_context if frame_info.code_context else []
+        stack_info.append({
+            "filename": frame_info.filename,
+            "lineno": frame_info.lineno,
+            "code_context": code_context,
+            "function": frame_info.function,
+        })
+
+    print(stack_info)
     
     return {
         "session_id": request_id_ctx_var.get(),
@@ -37,14 +57,7 @@ def create_logged_data(result, args, kwargs, caller_frame):
         "response": result.to_dict(),
         "usage": result.usage.to_dict(),
         "timestamp": int(time.time()),
-        "stack_info": {
-            "filename": frame_info.filename,
-            "lineno": frame_info.lineno,
-            "code_context": (
-                frame_info.code_context if frame_info.code_context else ""
-            ),
-            "caller_function_name": caller_frame.f_code.co_name,
-        },
+        "stack_trace": stack_info,  # Replace single stack_info with full trace
         "call_parameters": {
             "model": kwargs.get("model", ""),
             "temperature": kwargs.get("temperature", 0),

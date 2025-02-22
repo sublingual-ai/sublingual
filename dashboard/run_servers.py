@@ -21,9 +21,8 @@ def start_react(react_dir, port=5361):
     )
 
 def start_flask(flask_dir, port='5360', log_dir='logs', verbose=False):
-    # Convert log_dir to absolute path relative to the project root
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    abs_log_dir = os.path.join(project_root, log_dir)
+    # Use absolute path from current working directory
+    abs_log_dir = os.path.abspath(log_dir)
     
     # Start the Flask server using app.py with custom arguments
     print(f"Starting Flask server with logs at: {abs_log_dir}")
@@ -50,8 +49,7 @@ def print_startup_message(flask_port, react_port):
 
 def main(args):
     # Check if log directory exists
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    abs_log_dir = os.path.join(project_root, args.log_dir)
+    abs_log_dir = os.path.abspath(args.log_dir)
     if not os.path.exists(abs_log_dir):
         print(f"Error: Log directory '{abs_log_dir}' does not exist")
         sys.exit(1)

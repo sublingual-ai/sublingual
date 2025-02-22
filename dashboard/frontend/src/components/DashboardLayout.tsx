@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent } from "@/components/ui/sidebar";
-import { Search, FileText } from "lucide-react";
+import { Search, FileText, RotateCw } from "lucide-react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -10,27 +10,32 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
   const [isLoading, setIsLoading] = useState(true);
   const { selectedFile, setSelectedFile } = useLogFile();
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch('http://localhost:5360/get_available_logs');
-        const files = await response.json();
-        // Filter only .jsonl files
-        const logFiles = files.filter((file: string) => file.endsWith('.jsonl'));
-        setAvailableLogs(logFiles);
-        
-        // Select the first file by default if none is selected
-        if (logFiles.length > 0 && !selectedFile) {
-          setSelectedFile(logFiles[0]);
-        }
-      } catch (error) {
-        console.error('Error fetching log files:', error);
-      } finally {
-        setIsLoading(false);
+  const fetchLogs = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:5360/get_available_logs');
+      const files = await response.json();
+      // Filter only .jsonl files
+      const logFiles = files.filter((file: string) => file.endsWith('.jsonl'));
+      setAvailableLogs(logFiles);
+      
+      // If there's a selected file, re-select it to trigger a refresh
+      if (selectedFile) {
+        // Force a re-selection of the same file to trigger a data refresh
+        const currentFile = selectedFile;
+        setSelectedFile('');  // Clear selection
+        setTimeout(() => setSelectedFile(currentFile), 0);  // Re-select after a tick
+      } else if (logFiles.length > 0) {
+        setSelectedFile(logFiles[0]);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching log files:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchLogs();
   }, []);
 
@@ -38,23 +43,39 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
     log.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getDisplayName = (fullPath: string) => {
+    // Extract everything after the last slash and before .jsonl
+    const match = fullPath.match(/\/([^/]+)\.jsonl$/);
+    return match ? match[1] : fullPath;
+  };
+
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gray-50">
+      <div className="h-screen flex w-full bg-gray-50">
         <Sidebar>
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupContent>
                 <div className="p-4 space-y-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Search logs..."
-                      className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <input
+                        type="text"
+                        placeholder="Search logs..."
+                        className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      onClick={fetchLogs}
+                      disabled={isLoading}
+                      className="p-2 bg-white border border-gray-200 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all disabled:opacity-50"
+                      title="Reload logs"
+                    >
+                      <RotateCw className={`w-4 h-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
                   </div>
                   <div className="space-y-1">
                     {isLoading ? (
@@ -73,7 +94,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
                           onClick={() => setSelectedFile(log)}
                         >
                           <FileText className="w-4 h-4 mr-2" />
-                          {log}
+                          {getDisplayName(log)}
                         </button>
                       ))
                     ) : (
@@ -87,7 +108,9 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
             </SidebarGroup>
           </SidebarContent>
         </Sidebar>
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1 p-8 overflow-hidden flex flex-col">
+          {children}
+        </main>
       </div>
     </SidebarProvider>
   );

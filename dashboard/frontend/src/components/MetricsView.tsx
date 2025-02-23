@@ -406,21 +406,18 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                                     {run.response.usage.total_tokens} tokens
                                                 </Badge>
                                             </div>
-                                            <div className="flex items-center space-x-4 mt-2">
-                                                {selectedCriteria.length > 0 && (
-                                                    <>
-                                                        <ScoreDisplay evaluations={runEvaluations} runId={runId} />
-                                                        <AutoEvaluateButton runId={runId} run={run} />
-                                                    </>
-                                                )}
-                                            </div>
+                                            {selectedCriteria.length > 0 && (
+                                                <div className="flex items-center space-x-4 mt-2">
+                                                    <ScoreDisplay evaluations={runEvaluations} runId={runId} />
+                                                    <AutoEvaluateButton runId={runId} run={run} />
+                                                </div>
+                                            )}
                                         </div>
                                         <span className="text-xs text-gray-500">
                                             {new Date(run.timestamp * 1000).toLocaleString()}
                                         </span>
                                     </div>
                                 </div>
-
                                 {isExpanded && (
                                     <div className="px-4 pb-4">
                                         <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />

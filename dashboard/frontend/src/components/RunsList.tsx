@@ -360,7 +360,7 @@ export const RunsList = () => {
             {filteredRuns.map((run, index) => {
               const runId = `run-${index}`;
               const isExpanded = expandedRuns.includes(runId);
-              
+
               return (
                 <div key={runId} className="transition-colors">
                   <div
@@ -398,10 +398,9 @@ export const RunsList = () => {
                       </span>
                     </div>
                   </div>
-
                   {isExpanded && (
                     <div className="px-4 pb-4">
-                      <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />
+                        <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />
                     </div>
                   )}
                 </div>

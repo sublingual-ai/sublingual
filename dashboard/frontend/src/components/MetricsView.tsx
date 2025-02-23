@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { LLMRun } from "@/types/logs";
+import { LLMRun, Message } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, ChevronUp, Minus, Calculator, Loader2, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,13 @@ const CRITERIA_LABELS: Record<EvaluationCriteria, string> = {
 interface LoadingState {
     [runId: string]: Set<string>; // Set of criteria currently loading
 }
+
+const getPreviewText = (messages: Message[], response: string) => {
+    if (messages.length === 0) return '';
+    const lastMessage = messages[messages.length - 1].content;
+    const preview = `${lastMessage} → ${response}`;
+    return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
+};
 
 const MetricsSummary = ({
     runs,
@@ -324,11 +331,53 @@ export function MetricsView({ runs }: MetricsViewProps) {
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 h-full flex flex-col">
-            <div className="border-b border-gray-200">
-                <div className="p-4">
-                    <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
-                    <div className="mt-4">
+        <div className="space-y-4 h-full flex flex-col">
+            {/* Evaluation Controls Box */}
+            <div className="flex-none">
+                {selectedCriteria.length > 0 ? (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+                        <div className="p-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                    Evaluation Criteria
+                                </label>
+                                <div className="flex gap-2">
+                                    {(Object.keys(CRITERIA_LABELS) as EvaluationCriteria[]).map((criteria) => (
+                                        <Badge
+                                            key={criteria}
+                                            variant={selectedCriteria.includes(criteria) ? "default" : "outline"}
+                                            className="cursor-pointer"
+                                            onClick={() => handleCriteriaChange(criteria)}
+                                        >
+                                            {CRITERIA_LABELS[criteria]}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-sm font-medium text-gray-700">Metrics Summary</h3>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex items-center gap-2"
+                                        onClick={handleEvaluateAll}
+                                    >
+                                        <Calculator className="w-4 h-4" />
+                                        <span className="text-xs">Evaluate All</span>
+                                    </Button>
+                                </div>
+                                <MetricsSummary
+                                    runs={runs}
+                                    evaluations={evaluations}
+                                    selectedCriteria={selectedCriteria}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
                         <label className="text-sm font-medium text-gray-700 mb-2 block">
                             Evaluation Criteria
                         </label>
@@ -345,88 +394,73 @@ export function MetricsView({ runs }: MetricsViewProps) {
                             ))}
                         </div>
                     </div>
-                </div>
-
-                {selectedCriteria.length > 0 && (
-                    <div className="bg-gray-50 border-t border-gray-100 p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-medium text-gray-700">Metrics Summary</h3>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center gap-2"
-                                onClick={handleEvaluateAll}
-                            >
-                                <Calculator className="w-4 h-4" />
-                                <span className="text-xs">Evaluate All</span>
-                            </Button>
-                        </div>
-                        <MetricsSummary
-                            runs={runs}
-                            evaluations={evaluations}
-                            selectedCriteria={selectedCriteria}
-                        />
-                    </div>
                 )}
             </div>
 
-            <ScrollArea className="flex-1">
-                <div className="divide-y divide-gray-100">
-                    {runs.map((run, index) => {
-                        const runId = `run-${index}`;
-                        const isExpanded = expandedRuns.includes(runId);
-                        const runEvaluations = evaluations[runId] || [];
-
-                        return (
-                            <div key={runId} className="transition-colors">
-                                <div
-                                    className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                                    onClick={() => toggleRun(runId)}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                            <div className="flex items-center space-x-2">
-                                                {isExpanded ? (
-                                                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                                                ) : (
-                                                    <ChevronRight className="w-4 h-4 text-gray-500" />
-                                                )}
-                                                <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                    {run.stack_info?.caller_function_name || 'Unknown Caller'}
-                                                </h3>
-                                            </div>
-                                            <LLMHeader run={run} />
-                                            <div className="flex items-center space-x-2 mt-1">
-                                                {run.stack_info && (
-                                                    <Badge variant="outline" className="text-xs text-primary-700">
-                                                        {run.stack_info.filename}:{run.stack_info.lineno}
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            {selectedCriteria.length > 0 && (
-                                                <div className="flex items-center space-x-4 mt-2">
-                                                    <ScoreDisplay evaluations={runEvaluations} runId={runId} />
-                                                    <AutoEvaluateButton runId={runId} run={run} />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <span className="text-xs text-gray-500">
-                                            {new Date(run.timestamp * 1000).toLocaleString()}
-                                        </span>
-                                    </div>
-                                </div>
-                                {isExpanded && (
-                                    <div className="px-4 pb-4">
-                                        <div className="space-y-2">
-                                            <LLMInteraction run={run} />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+            {/* Main Runs List Box */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0">
+                <div className="border-b border-gray-200 p-4 flex-none">
+                    <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
                 </div>
-            </ScrollArea>
+
+                <ScrollArea className="flex-1">
+                    <div className="divide-y divide-gray-100">
+                        {runs.map((run, index) => {
+                            const runId = `run-${index}`;
+                            const isExpanded = expandedRuns.includes(runId);
+                            const runEvaluations = evaluations[runId] || [];
+
+                            return (
+                                <div key={runId} className="transition-colors">
+                                    <div
+                                        className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                                        onClick={() => toggleRun(runId)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1">
+                                                <div className="flex items-center space-x-2">
+                                                    {isExpanded ? (
+                                                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                                                    ) : (
+                                                        <ChevronRight className="w-4 h-4 text-gray-500" />
+                                                    )}
+                                                    <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                        {getPreviewText(run.messages, run.response_texts[0])}
+                                                    </h3>
+                                                </div>
+                                                <LLMHeader run={run} />
+                                                <div className="flex items-center space-x-2 mt-1">
+                                                    {run.stack_info && (
+                                                        <Badge variant="outline" className="text-xs text-primary-700">
+                                                            {run.stack_info.filename}:{run.stack_info.lineno}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                {selectedCriteria.length > 0 && (
+                                                    <div className="flex items-center space-x-4 mt-2">
+                                                        <ScoreDisplay evaluations={runEvaluations} runId={runId} />
+                                                        <AutoEvaluateButton runId={runId} run={run} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="text-xs text-gray-500">
+                                                {new Date(run.timestamp * 1000).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {isExpanded && (
+                                        <div className="px-4 pb-4">
+                                            <div className="space-y-2">
+                                                <LLMInteraction run={run} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </ScrollArea>
+            </div>
         </div>
     );
 } 

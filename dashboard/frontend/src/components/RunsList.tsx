@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, ChevronDown, ChevronUp, Tag, Users, Hash } from "lucide-react";
+import { Search, ChevronDown, ChevronRight, Tag, Users, Hash } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
@@ -373,9 +373,9 @@ export const RunsList = () => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-gray-500" />
-                          ) : (
                             <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
                           )}
                           <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
                             {getPreviewText(run.messages, run.response_texts[0])}

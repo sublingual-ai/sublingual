@@ -23,36 +23,42 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
     <div className="tree-node">
       <div 
         className={`
-          flex items-center p-2 rounded-lg transition-colors
+          flex flex-col p-2 rounded-lg transition-colors
           ${hasRuns ? 'bg-primary-50/50' : 'hover:bg-gray-50'}
         `}
       >
         <button 
           onClick={() => hasChildren ? setIsExpanded(!isExpanded) : setShowRuns(!showRuns)}
-          className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700"
+          className="flex items-center w-full text-left"
         >
-          {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          <div className="w-6 h-6 flex items-center justify-center text-gray-500">
+            {hasChildren ? (
+              isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />
+            ) : (
+              hasRuns && (showRuns ? <ChevronDown size={18} /> : <ChevronRight size={18} />)
+            )}
+          </div>
+
+          <div className="flex-1 flex items-center gap-2">
+            <Code size={16} className="text-gray-500" />
+            <span className="font-medium text-gray-700">
+              {node.function}
+            </span>
+            <span className="text-sm text-gray-500">
+              {node.filename.split('/').pop()}:{node.lineno}
+            </span>
+            
+            {hasRuns && (
+              <Badge variant="secondary" className="ml-2">
+                <MessageSquare size={12} className="mr-1" />
+                {node.runs.length} {node.runs.length === 1 ? 'call' : 'calls'}
+              </Badge>
+            )}
+          </div>
         </button>
 
-        <div className="flex-1 flex items-center gap-2">
-          <Code size={16} className="text-gray-500" />
-          <span className="font-medium text-gray-700">
-            {node.function}
-          </span>
-          <span className="text-sm text-gray-500">
-            {node.filename.split('/').pop()}:{node.lineno}
-          </span>
-          
-          {hasRuns && (
-            <Badge variant="secondary" className="ml-2">
-              <MessageSquare size={12} className="mr-1" />
-              {node.runs.length} {node.runs.length === 1 ? 'call' : 'calls'}
-            </Badge>
-          )}
-        </div>
-
         {hasRuns && (
-          <div className="mt-2">
+          <div className="mt-2 ml-6">
             <LLMHeader run={node.runs[0]} />
           </div>
         )}

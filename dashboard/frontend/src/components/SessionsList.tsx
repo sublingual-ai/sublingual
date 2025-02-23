@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, ChevronDown, ChevronUp, Hash } from "lucide-react";
+import { Search, ChevronDown, ChevronRight, Hash } from "lucide-react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
@@ -75,9 +75,9 @@ export const SessionsList = () => {
                   <td className="px-4 py-2">
                     <div className="flex items-center space-x-2">
                       {expandedSessions.includes(session.sessionId) ? (
-                        <ChevronUp className="w-4 h-4 text-gray-500" />
-                      ) : (
                         <ChevronDown className="w-4 h-4 text-gray-500" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-gray-500" />
                       )}
                       <Hash className="w-4 h-4" />
                       <span className="text-sm font-medium text-gray-700">

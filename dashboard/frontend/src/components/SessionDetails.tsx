@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Tag, Code } from "lucide-react";
 import { Message, StackInfo, LLMRun } from "@/types/logs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { LLMInteraction } from "@/components/LLMInteraction";
 
 interface SessionDetailsProps {
   runs: LLMRun[];
@@ -166,54 +167,11 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
               )}
 
               {/* Messages (collapsed or expanded) */}
-              {!expandedStates[index]?.messages ? (
-                <div 
-                  className="text-sm text-gray-600 bg-gray-50 rounded-md p-3 cursor-pointer hover:bg-gray-100"
-                  onClick={() => toggleMessages(index)}
-                >
-                  {getPreviewText(run.messages, run.response_texts[0])}
-                </div>
-              ) : (
-                // Expanded view
-                <>
-                  {/* Messages */}
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-gray-500 border-b border-gray-200 pb-2">
-                      <button
-                        onClick={() => toggleMessages(index)}
-                        className="text-xs hover:text-gray-700 flex items-center space-x-1"
-                      >
-                        <ChevronUp className="w-3 h-3" />
-                        <span>Collapse messages</span>
-                      </button>
-                    </div>
-                    {run.messages.map((msg, msgIndex) => (
-                      <div key={msgIndex}>
-                        <div className="text-xs font-medium text-gray-500 mb-1">
-                          {msg.role}:
-                        </div>
-                        <div 
-                          className="text-sm text-gray-700 bg-gray-50 rounded-md p-3 cursor-pointer hover:bg-gray-100"
-                          onClick={() => toggleContent(msg.content)}
-                        >
-                          {msg.content}
-                        </div>
-                      </div>
-                    ))}
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 mb-1">
-                        response:
-                      </div>
-                      <div 
-                        className="text-sm text-gray-700 bg-gray-50 rounded-md p-3 cursor-pointer hover:bg-gray-100"
-                        onClick={() => toggleContent(run.response_texts[0])}
-                      >
-                        {run.response_texts[0]}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+              <LLMInteraction 
+                run={run}
+                defaultExpanded={expandedStates[index]?.messages}
+                showHeader={false}
+              />
             </div>
           </div>
         );

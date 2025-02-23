@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronRight, ChevronDown, Code, MessageSquare, User, Bot } from 'lucide-react';
+import { LLMInteraction } from '@/components/LLMInteraction';
 
 interface CallHierarchyProps {
   runs: LLMRun[];
@@ -52,45 +53,9 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
 
       {/* Show the actual LLM interactions */}
       {hasRuns && showRuns && (
-        <div className="ml-6 mt-2 space-y-4 border-l border-gray-200 pl-4">
+        <div className="ml-6 mt-2 border-l border-gray-200 pl-4">
           {node.runs.map((run, index) => (
-            <div key={index} className="space-y-3">
-              <div className="flex gap-2">
-                <Badge variant="outline">{run.response.model}</Badge>
-                <Badge variant="secondary">
-                  {run.response.usage.total_tokens} tokens
-                </Badge>
-              </div>
-              
-              {/* Messages */}
-              <div className="space-y-2">
-                {run.messages.map((msg, msgIndex) => (
-                  <div 
-                    key={msgIndex} 
-                    className={`flex items-start gap-2 p-2 rounded-lg ${
-                      msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
-                    }`}
-                  >
-                    {msg.role === 'assistant' ? (
-                      <Bot size={16} className="mt-1 text-primary-600" />
-                    ) : (
-                      <User size={16} className="mt-1 text-gray-600" />
-                    )}
-                    <div className="text-sm whitespace-pre-wrap">
-                      {msg.content}
-                    </div>
-                  </div>
-                ))}
-                
-                {/* Response */}
-                <div className="flex items-start gap-2 p-2 rounded-lg bg-primary-50">
-                  <Bot size={16} className="mt-1 text-primary-600" />
-                  <div className="text-sm whitespace-pre-wrap">
-                    {run.response_texts[0]}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <LLMInteraction key={index} run={run} defaultExpanded={true} />
           ))}
         </div>
       )}

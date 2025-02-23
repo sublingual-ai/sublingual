@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { LLMInteraction } from "@/components/LLMInteraction";
 
 interface MetricsViewProps {
     runs: LLMRun[];
@@ -92,8 +93,7 @@ const MetricsSummary = ({
                             />
                             <Progress
                                 value={metric.completionRate}
-                                className="w-20 bg-gray-100"
-                                indicatorClassName="bg-gray-300"
+                                className="w-20 [&>div]:bg-gray-300 bg-gray-100"
                             />
                         </div>
                     </div>
@@ -423,25 +423,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
                                 {isExpanded && (
                                     <div className="px-4 pb-4">
-                                        <div className="space-y-3 text-sm">
-                                            {run.messages.map((msg, msgIndex) => (
-                                                <div key={msgIndex}>
-                                                    <div className="font-medium text-gray-700">{msg.role}:</div>
-                                                    <div className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md">
-                                                        {msg.content}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            <div>
-                                                <div className="font-medium text-gray-700">Response:</div>
-                                                {run.response_texts.map((text, respIndex) => (
-                                                    <div key={respIndex} className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md">
-                                                        <span className="font-mono text-xs text-gray-500 mr-2">[{respIndex}]</span>
-                                                        {text}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
+                                        <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />
                                     </div>
                                 )}
                             </div>

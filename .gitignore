@@ -3,6 +3,7 @@ keys.env
 subl_logs/
 dist/
 build/
+.sublingual/
 
 # Top level python ignores
 __pycache__/

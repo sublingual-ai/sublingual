@@ -8,77 +8,16 @@ import { useEffect } from "react";
 import React from "react";
 import { SessionDetails } from "@/components/SessionDetails";
 import { LLMRun, SessionRow } from "@/types/logs";
+import { useLogs } from '@/hooks/useLogs';
+import { SearchInput } from "@/components/ui/search-input";
+import { LoadingState } from "@/components/ui/loading-state";
+import { runContainsText } from "@/utils/filterUtils";
 
 export const SessionsList = () => {
   const [expandedSessions, setExpandedSessions] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const { selectedFile } = useLogFile();
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!selectedFile) return;
-      
-      setIsLoading(true);
-      try {
-        const res = await fetch(`http://localhost:5360/get_log?filename=${selectedFile}`);
-        if (!res.ok) {
-          throw new Error('Failed to fetch logs');
-        }
-        const data: LLMRun[] = await res.json();
-        
-        // Group runs by session_id, treating null/undefined sessions as individual items
-        const sessionRows = data.reduce((acc: SessionRow[], run) => {
-          if (!run.session_id) {
-            // Create individual session for runs without session_id
-            // Generate unique ID using timestamp and random suffix
-            const uniqueId = `single-${run.timestamp}-${Math.random().toString(36).substr(2, 5)}`;
-            acc.push({
-              sessionId: uniqueId,
-              runs: [run],
-              callCount: 1,
-              firstCall: run.timestamp,
-              lastCall: run.timestamp,
-              totalTokens: run.response.usage.total_tokens
-            });
-          } else {
-            // Find or create session group
-            let sessionGroup = acc.find(s => s.sessionId === run.session_id);
-            if (!sessionGroup) {
-              sessionGroup = {
-                sessionId: run.session_id,
-                runs: [],
-                callCount: 0,
-                firstCall: run.timestamp,
-                lastCall: run.timestamp,
-                totalTokens: 0
-              };
-              acc.push(sessionGroup);
-            }
-            sessionGroup.runs.push(run);
-            sessionGroup.callCount++;
-            sessionGroup.firstCall = Math.min(sessionGroup.firstCall, run.timestamp);
-            sessionGroup.lastCall = Math.max(sessionGroup.lastCall, run.timestamp);
-            sessionGroup.totalTokens += run.response.usage.total_tokens;
-          }
-          return acc;
-        }, []);
-
-        // Sort sessions by timestamp
-        sessionRows.sort((a, b) => b.lastCall - a.lastCall);
-
-        setSessions(sessionRows);
-      } catch (error) {
-        console.error('Error fetching logs:', error);
-        setSessions([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [selectedFile]);
+  const { sessions, isLoading } = useLogs(selectedFile);
 
   const toggleSession = (sessionId: string) => {
     setExpandedSessions(prev =>
@@ -89,36 +28,29 @@ export const SessionsList = () => {
   };
 
   const filteredSessions = sessions.filter(session =>
-    session.runs.some(run =>
-      run.messages.some(msg =>
-        msg.content.toLowerCase().includes(searchTerm.toLowerCase())
-      ) || run.response_texts.some(text =>
-        text.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    )
+    session.runs.some(run => runContainsText(run, searchTerm))
   );
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
       <div className="p-4 border-b border-gray-100 flex-shrink-0">
         <h2 className="text-lg font-semibold text-gray-900">Sessions</h2>
-        <div className="mt-4 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search in sessions..."
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
+        <div className="mt-4">
+          <SearchInput
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={setSearchTerm}
+            placeholder="Search in sessions..."
           />
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Spinner className="w-8 h-8 text-primary-500" />
-        </div>
-      ) : filteredSessions.length > 0 ? (
+      <LoadingState 
+        isLoading={isLoading}
+        isEmpty={filteredSessions.length === 0}
+        emptyMessage="No sessions found"
+      />
+
+      {filteredSessions.length > 0 ? (
         <ScrollArea className="flex-1">
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">

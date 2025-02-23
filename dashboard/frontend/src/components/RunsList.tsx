@@ -7,6 +7,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Message, StackInfo, LLMRun } from "@/types/logs";
 import { LLMInteraction } from "@/components/LLMInteraction";
+import { SearchInput } from "@/components/ui/search-input";
+import { LoadingState } from "@/components/ui/loading-state";
+import { runContainsText } from "@/utils/filterUtils";
 
 const CodePopup = ({
   stackInfo,
@@ -289,26 +292,17 @@ export const RunsList = () => {
     );
   };
 
-  const filteredRuns = runs.filter(run =>
-    run.messages.some(msg =>
-      msg.content.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || run.response_texts.some(text =>
-      text.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  const filteredRuns = runs.filter(run => runContainsText(run, searchTerm));
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
       <div className="p-4 border-b border-gray-100 flex-shrink-0">
         <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
-        <div className="mt-4 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search in runs..."
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 transition-all"
+        <div className="mt-4">
+          <SearchInput
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={setSearchTerm}
+            placeholder="Search in runs..."
           />
         </div>
         <div className="mt-4 space-y-2">
@@ -353,11 +347,14 @@ export const RunsList = () => {
           )}
         </div>
       </div>
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Spinner className="w-8 h-8 text-primary-500" />
-        </div>
-      ) : filteredRuns.length > 0 ? (
+
+      <LoadingState 
+        isLoading={isLoading}
+        isEmpty={filteredRuns.length === 0}
+        emptyMessage="No runs found"
+      />
+
+      {filteredRuns.length > 0 ? (
         <ScrollArea className="flex-1">
           <div className="divide-y divide-gray-100">
             {filteredRuns.map((run, index) => {

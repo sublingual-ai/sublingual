@@ -169,7 +169,6 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
               {/* Messages (collapsed or expanded) */}
               <LLMInteraction 
                 run={run}
-                defaultExpanded={expandedStates[index]?.messages}
                 showHeader={false}
               />
             </div>

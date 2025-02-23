@@ -55,7 +55,7 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
       {hasRuns && showRuns && (
         <div className="ml-6 mt-2 border-l border-gray-200 pl-4">
           {node.runs.map((run, index) => (
-            <LLMInteraction key={index} run={run} defaultExpanded={true} />
+            <LLMInteraction key={index} run={run} />
           ))}
         </div>
       )}

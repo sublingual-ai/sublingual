@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, Bot, User, Wrench, Calculator, Search, Database } from "lucide-react";
+import { Bot, User, Wrench, Calculator, Search, Database } from "lucide-react";
 import { Message, LLMRun, ToolCall } from "@/types/logs";
 
 interface LLMInteractionProps {
   run: LLMRun;
-  defaultExpanded?: boolean;
   showHeader?: boolean;
 }
 
@@ -13,29 +11,10 @@ interface ToolCallArgs {
   [key: string]: any;
 }
 
-const getPreviewText = (messages: Message[], response: string | null, toolCalls: ToolCall[] | undefined) => {
-  if (messages.length === 0) return '';
-  const lastMessage = messages[messages.length - 1].content;
-  
-  if (toolCalls && toolCalls.length > 0) {
-    const toolCall = toolCalls[0];
-    const args = JSON.parse(toolCall.function.arguments);
-    const preview = `${lastMessage} → [${toolCall.function.name}(${JSON.stringify(args)})]`;
-    return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
-  }
-  
-  if (response) {
-    const preview = `${lastMessage} → ${response}`;
-    return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
-  }
-  
-  return lastMessage;
-};
-
 const CalculatorDisplay = ({ args }: { args: ToolCallArgs }) => {
   const operation = args.operation;
   const numbers = args.numbers;
-  
+
   const operationSymbols: Record<string, string> = {
     'add': '+',
     'subtract': '-',
@@ -132,7 +111,7 @@ const ObjectTree = ({ data }: { data: Record<string, any> }) => {
 
 const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
   const args = JSON.parse(toolCall.function.arguments);
-  
+
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50">
       <Wrench size={16} className="mt-1 text-blue-600 flex-shrink-0" />
@@ -148,9 +127,7 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
   );
 };
 
-export function LLMInteraction({ run, defaultExpanded = false, showHeader = true }: LLMInteractionProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  
+export function LLMInteraction({ run, showHeader = true }: LLMInteractionProps) {
   const toolCalls = run.response.choices[0].message.tool_calls;
   const responseText = run.response_texts[0];
 
@@ -176,58 +153,53 @@ export function LLMInteraction({ run, defaultExpanded = false, showHeader = true
         </div>
       )}
 
-      {!isExpanded ? (
-        <div 
-          className="text-sm text-gray-600 bg-gray-50 rounded-md p-3 cursor-pointer hover:bg-gray-100 flex items-center justify-between"
-          onClick={() => setIsExpanded(true)}
-        >
-          <span>{getPreviewText(run.messages, responseText, toolCalls)}</span>
-          <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-2" />
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <button
-              onClick={() => setIsExpanded(false)}
-              className="text-xs text-gray-500 hover:text-gray-700 flex items-center space-x-1"
-            >
-              <ChevronUp className="w-3 h-3" />
-              <span>Collapse</span>
-            </button>
-          </div>
-
-          {run.messages.map((msg, msgIndex) => (
-            <div 
-              key={msgIndex}
-              className={`flex items-start gap-2 p-3 rounded-lg ${
-                msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
+      <div className="space-y-2">
+        {run.messages.map((msg, msgIndex) => (
+          <div
+            key={msgIndex}
+            className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
               }`}
-            >
+          >
+            <div className="flex items-center gap-2">
               {msg.role === 'assistant' ? (
-                <Bot size={16} className="mt-1 text-primary-600 flex-shrink-0" />
+                <>
+                  <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                  <span className="text-xs text-primary-600">Assistant</span>
+                </>
+              ) : msg.role === 'system' ? (
+                <>
+                  <Wrench size={16} className="text-gray-600 flex-shrink-0" />
+                  <span className="text-xs text-gray-600">System</span>
+                </>
               ) : (
-                <User size={16} className="mt-1 text-gray-600 flex-shrink-0" />
+                <>
+                  <User size={16} className="text-gray-600 flex-shrink-0" />
+                  <span className="text-xs text-gray-600">User</span>
+                </>
               )}
-              <div className="text-sm whitespace-pre-wrap overflow-x-auto">
-                {msg.content}
-              </div>
             </div>
-          ))}
+            <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+              {msg.content}
+            </div>
+          </div>
+        ))}
 
-          {toolCalls ? (
-            toolCalls.map((toolCall, index) => (
-              <ToolCallDisplay key={index} toolCall={toolCall} />
-            ))
-          ) : responseText && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-primary-50">
-              <Bot size={16} className="mt-1 text-primary-600 flex-shrink-0" />
-              <div className="text-sm whitespace-pre-wrap overflow-x-auto">
-                {responseText}
-              </div>
+        {toolCalls ? (
+          toolCalls.map((toolCall, index) => (
+            <ToolCallDisplay key={index} toolCall={toolCall} />
+          ))
+        ) : responseText && (
+          <div className="flex flex-col p-3 rounded-lg bg-primary-50">
+            <div className="flex items-center gap-2">
+              <Bot size={16} className="text-primary-600 flex-shrink-0" />
+              <span className="text-xs text-primary-600">Response</span>
             </div>
-          )}
-        </div>
-      )}
+            <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+              {responseText}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 } 

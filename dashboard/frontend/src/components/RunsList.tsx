@@ -400,7 +400,7 @@ export const RunsList = () => {
                   </div>
                   {isExpanded && (
                     <div className="px-4 pb-4">
-                        <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />
+                        <LLMInteraction run={run} showHeader={false} />
                     </div>
                   )}
                 </div>

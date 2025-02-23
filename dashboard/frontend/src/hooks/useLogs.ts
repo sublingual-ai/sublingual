@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { LLMRun, SessionRow } from '@/types/logs';
 import { groupRunsIntoSessions } from '@/utils/sessionUtils';
+import { API_BASE_URL } from '@/config';
 
 export const useLogs = (selectedFile: string | null) => {
   const [runs, setRuns] = useState<LLMRun[]>([]);
@@ -16,7 +17,7 @@ export const useLogs = (selectedFile: string | null) => {
       setError(null);
       
       try {
-        const res = await fetch(`http://localhost:5360/get_log?filename=${selectedFile}`);
+        const res = await fetch(`${API_BASE_URL}/get_log?filename=${selectedFile}`);
         if (!res.ok) {
           throw new Error('Failed to fetch logs');
         }

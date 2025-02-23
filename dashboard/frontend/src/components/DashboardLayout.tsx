@@ -3,6 +3,7 @@ import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupCon
 import { Search, FileText, RotateCw } from "lucide-react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
+import { API_BASE_URL } from '@/config';
 
 export const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   const [availableLogs, setAvailableLogs] = useState<string[]>([]);
@@ -13,7 +14,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5360/get_available_logs');
+      const response = await fetch(`${API_BASE_URL}/get_available_logs`);
       const files = await response.json();
       // Filter only .jsonl files
       const logFiles = files.filter((file: string) => file.endsWith('.jsonl'));

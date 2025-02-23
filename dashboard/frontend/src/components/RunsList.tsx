@@ -11,6 +11,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { runContainsText } from "@/utils/filterUtils";
 import { LLMHeader } from "@/components/LLMHeader";
+import { API_BASE_URL } from '@/config';
 
 const CodePopup = ({
   stackInfo,
@@ -134,7 +135,7 @@ export const RunsList = () => {
       
       setIsLoading(true);
       try {
-        const res = await fetch(`http://localhost:5360/get_log?filename=${selectedFile}`);
+        const res = await fetch(`${API_BASE_URL}/get_log?filename=${selectedFile}`);
         if (!res.ok) {
           throw new Error('Failed to fetch logs');
         }

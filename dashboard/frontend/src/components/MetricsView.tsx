@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { LLMInteraction } from "@/components/LLMInteraction";
 import { LLMHeader } from "@/components/LLMHeader";
+import { API_BASE_URL } from '@/config';
 
 interface MetricsViewProps {
     runs: LLMRun[];
@@ -155,7 +156,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                 [runId]: new Set(criteriaToEvaluate)
             }));
 
-            const response = await fetch('http://localhost:5360/evaluate', {
+            const response = await fetch(`${API_BASE_URL}/evaluate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

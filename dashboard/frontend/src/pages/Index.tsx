@@ -10,6 +10,7 @@ import { LLMRun, SessionRow } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { MetricsView } from "@/components/MetricsView";
+import { useLogs } from '@/hooks/useLogs';
 
 type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics';
 
@@ -18,76 +19,13 @@ const Dashboard = () => {
     const savedView = localStorage.getItem('selectedView');
     return (savedView as ViewType) || 'runs';
   });
-  const [runs, setRuns] = useState<LLMRun[]>([]);
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const { selectedFile } = useLogFile();
+  const { runs, sessions, isLoading } = useLogs(selectedFile);
 
   useEffect(() => {
     localStorage.setItem('selectedView', view);
   }, [view]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!selectedFile) return;
-      
-      try {
-        const res = await fetch(`http://localhost:5360/get_log?filename=${selectedFile}`);
-        if (!res.ok) {
-          throw new Error('Failed to fetch logs');
-        }
-        const data: LLMRun[] = await res.json();
-        setRuns(data);
-
-        // Group runs by session_id, treating null/undefined sessions as individual items
-        const sessionRows = data.reduce((acc: SessionRow[], run) => {
-          if (!run.session_id) {
-            // Create individual session for runs without session_id
-            const uniqueId = `single-${run.timestamp}-${Math.random().toString(36).substr(2, 5)}`;
-            acc.push({
-              sessionId: uniqueId,
-              runs: [run],
-              callCount: 1,
-              firstCall: run.timestamp,
-              lastCall: run.timestamp,
-              totalTokens: run.response.usage.total_tokens
-            });
-          } else {
-            // Find or create session group
-            let sessionGroup = acc.find(s => s.sessionId === run.session_id);
-            if (!sessionGroup) {
-              sessionGroup = {
-                sessionId: run.session_id,
-                runs: [],
-                callCount: 0,
-                firstCall: run.timestamp,
-                lastCall: run.timestamp,
-                totalTokens: 0
-              };
-              acc.push(sessionGroup);
-            }
-            sessionGroup.runs.push(run);
-            sessionGroup.callCount++;
-            sessionGroup.firstCall = Math.min(sessionGroup.firstCall, run.timestamp);
-            sessionGroup.lastCall = Math.max(sessionGroup.lastCall, run.timestamp);
-            sessionGroup.totalTokens += run.response.usage.total_tokens;
-          }
-          return acc;
-        }, []);
-
-        // Sort sessions by timestamp
-        sessionRows.sort((a, b) => b.lastCall - a.lastCall);
-
-        setSessions(sessionRows);
-      } catch (error) {
-        console.error('Error fetching logs:', error);
-        setRuns([]);
-        setSessions([]);
-      }
-    };
-
-    fetchData();
-  }, [selectedFile]);
 
   useEffect(() => {
     if (view === 'trace' && !selectedSessionId && sessions.length > 0) {

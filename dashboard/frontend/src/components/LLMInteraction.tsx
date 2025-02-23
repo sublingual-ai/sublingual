@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Bot, User, Wrench, Calculator, Search, Database } from "lucide-react";
 import { Message, LLMRun, ToolCall } from "@/types/logs";
+import React from "react";
 
 interface LLMInteractionProps {
   run: LLMRun;
@@ -127,64 +128,103 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
 };
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
-  // Get all tool calls and response texts
-  const allToolCalls = run.response.choices.flatMap((choice, index) => 
-    choice.message.tool_calls?.map(toolCall => ({ toolCall, index })) || []
-  );
-  
+  const renderContent = (content: any) => {
+    if (Array.isArray(content)) {
+      return content.map((block, index) => {
+        if (block.type === 'text') {
+          return <div key={index}>{block.text}</div>;
+        } else if (block.type === 'image_url') {
+          return (
+            <div key={index} className="mt-2 p-2 bg-gray-100 rounded text-gray-600 text-sm">
+              [Image content]
+            </div>
+          );
+        } else {
+          return <ObjectDisplay key={index} data={block} />;
+        }
+      });
+    } else if (typeof content === 'object' && content !== null) {
+      return <ObjectDisplay data={content} />;
+    }
+    return content;
+  };
+
   return (
     <div className="space-y-2">
       <div className="space-y-2">
-        {run.messages.map((msg, msgIndex) => (
-          <div
-            key={msgIndex}
-            className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
-              }`}
-          >
-            <div className="flex items-center gap-2">
-              {msg.role === 'assistant' ? (
-                <>
-                  <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                  <span className="text-xs text-primary-600">Assistant</span>
-                </>
-              ) : msg.role === 'system' ? (
-                <>
-                  <Wrench size={16} className="text-gray-600 flex-shrink-0" />
-                  <span className="text-xs text-gray-600">System</span>
-                </>
-              ) : (
-                <>
-                  <User size={16} className="text-gray-600 flex-shrink-0" />
-                  <span className="text-xs text-gray-600">User</span>
-                </>
-              )}
-            </div>
-            <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
-              {msg.content}
-            </div>
-          </div>
-        ))}
+        {run.messages.map((msg, msgIndex) => {
+          const messageToolCalls = msg.role === 'assistant' && msg.tool_calls 
+            ? msg.tool_calls.map((toolCall, index) => ({ toolCall, index }))
+            : [];
 
-        {allToolCalls.length > 0 ? (
-          allToolCalls.map(({ toolCall, index }, toolCallIndex) => (
-            <div key={toolCallIndex}>
-              <Badge variant="outline" className="mb-2">Response [{index}]</Badge>
-              <ToolCallDisplay toolCall={toolCall} />
-            </div>
-          ))
-        ) : run.response_texts && (
-          run.response_texts.map((responseText, index) => (
-            <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
-              <div className="flex items-center gap-2">
-                <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                <span className="text-xs text-primary-600">Response [{index}]</span>
+          return (
+            <React.Fragment key={msgIndex}>
+              <div className={`flex flex-col p-3 rounded-lg ${
+                msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {msg.role === 'assistant' ? (
+                    <>
+                      <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                      <span className="text-xs text-primary-600">Assistant</span>
+                    </>
+                  ) : msg.role === 'system' ? (
+                    <>
+                      <Wrench size={16} className="text-gray-600 flex-shrink-0" />
+                      <span className="text-xs text-gray-600">System</span>
+                    </>
+                  ) : msg.role === 'tool' ? (
+                    <>
+                      <Wrench size={16} className="text-blue-600 flex-shrink-0" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-600">Tool</span>
+                        {msg.tool_call_id && (
+                          <Badge variant="outline" className="text-xs">
+                            ID: {msg.tool_call_id}
+                          </Badge>
+                        )}
+                      </div>
+                    </>
+                  ) : msg.role === 'user' ? (
+                    <>
+                      <User size={16} className="text-gray-600 flex-shrink-0" />
+                      <span className="text-xs text-gray-600">User</span>
+                    </>
+                  ) : (
+                    <>
+                      <User size={16} className="text-gray-600 flex-shrink-0" />
+                      <span className="text-xs text-gray-600">{msg.role}</span>
+                    </>
+                  )}
+                </div>
+                <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+                  {renderContent(msg.content)}
+                </div>
               </div>
-              <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
-                {responseText}
-              </div>
-            </div>
-          ))
-        )}
+
+              {messageToolCalls.length > 0 && messageToolCalls.map(({ toolCall, index }, toolCallIndex) => (
+                <div key={toolCallIndex} className="ml-6">
+                  <Badge variant="outline" className="mb-2">Tool Call [{index + 1}]</Badge>
+                  <ToolCallDisplay toolCall={toolCall} />
+                </div>
+              ))}
+
+              {msgIndex === run.messages.length - 1 && !messageToolCalls.length && run.response_texts && (
+                run.response_texts.map((responseText, index) => (
+                  <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
+                    <div className="flex items-center gap-2">
+                      <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                      <span className="text-xs text-primary-600">Response [{index}]</span>
+                    </div>
+                    <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+                      {responseText}
+                    </div>
+                  </div>
+                ))
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

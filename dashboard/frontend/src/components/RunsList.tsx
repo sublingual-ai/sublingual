@@ -6,6 +6,7 @@ import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Message, StackInfo, LLMRun } from "@/types/logs";
+import { LLMInteraction } from "@/components/LLMInteraction";
 
 const CodePopup = ({
   stackInfo,
@@ -403,32 +404,7 @@ export const RunsList = () => {
 
                   {isExpanded && (
                     <div className="px-4 pb-4">
-                      <div className="space-y-3 text-sm">
-                        {run.messages.map((msg, msgIndex) => (
-                          <div key={msgIndex}>
-                            <div className="font-medium text-gray-700">{msg.role}:</div>
-                            <div 
-                              className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
-                              onClick={() => setFullTextContent(msg.content)}
-                            >
-                              {truncateText(msg.content)}
-                            </div>
-                          </div>
-                        ))}
-                        <div>
-                          <div className="font-medium text-gray-700">Responses:</div>
-                          {run.response_texts.map((text, respIndex) => (
-                            <div 
-                              key={respIndex} 
-                              className="mt-1 text-gray-600 bg-gray-100 p-3 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
-                              onClick={() => setFullTextContent(text)}
-                            >
-                              <span className="font-mono text-xs text-gray-500 mr-2">[{respIndex}]</span>
-                              {truncateText(text)}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <LLMInteraction run={run} defaultExpanded={true} showHeader={false} />
                     </div>
                   )}
                 </div>

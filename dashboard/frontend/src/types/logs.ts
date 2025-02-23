@@ -1,6 +1,7 @@
 export interface Message {
   role: string;
-  content: string;
+  content: string | null;
+  tool_calls?: ToolCall[];
 }
 
 export interface StackInfo {
@@ -17,6 +18,25 @@ export interface StackFrame {
   function: string;
 }
 
+export interface ToolCall {
+  id: string;
+  type: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface Choice {
+  finish_reason: string;
+  index: number;
+  message: {
+    content: string | null;
+    role: string;
+    tool_calls?: ToolCall[];
+  };
+}
+
 export interface LLMRun {
   session_id: string;
   messages: Message[];
@@ -28,6 +48,7 @@ export interface LLMRun {
       total_tokens: number;
       // ... other usage fields
     };
+    choices: Choice[];
     // ... other response fields
   };
   usage: {

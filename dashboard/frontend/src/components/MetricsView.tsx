@@ -25,6 +25,7 @@ import { Filter, FilterOption } from "@/types/logs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { createHash } from 'crypto';
+import { RunsFilter } from "@/components/RunsFilter";
 
 interface MetricsViewProps {
     runs: LLMRun[];
@@ -147,130 +148,6 @@ const MetricsSummary = ({
                     </div>
                 </div>
             ))}
-        </div>
-    );
-};
-
-const FilterSelector = ({ 
-    filterOptions, 
-    filters, 
-    addFilter 
-}: { 
-    filterOptions: FilterOption[];
-    filters: Filter[];
-    addFilter: (field: string, value: any) => void;
-}) => {
-    const [selectedCriteria, setSelectedCriteria] = useState<string | null>(null);
-    const [searchQuery, setSearchQuery] = useState("");
-
-    const selectedOption = filterOptions.find(opt => opt.field === selectedCriteria);
-    
-    const filteredValues = selectedOption?.values.filter(value => 
-        String(value).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (selectedOption.field === 'output_tokens' && 
-         `${value}-${value + 100} tokens`.toLowerCase().includes(searchQuery.toLowerCase()))
-    ) ?? [];
-
-    // Add this helper function to handle multiple selections
-    const handleSelectionChange = (field: string, value: any) => {
-        const existingFilter = filters.find(f => f.field === field);
-        const values = existingFilter?.value || [];
-        
-        if (values.includes(value)) {
-            // If value exists, remove it
-            if (values.length === 1) {
-                // If it's the last value, remove the whole filter
-                addFilter(field, []);
-            } else {
-                // Otherwise, remove just this value
-                addFilter(field, values.filter(v => v !== value));
-            }
-        } else {
-            // If value doesn't exist, add it to existing values
-            addFilter(field, [...values, value]);
-        }
-    };
-
-    return (
-        <div className="space-y-4">
-            {!selectedCriteria ? (
-                // Show criteria selection when no criteria is selected
-                <>
-                    <div className="text-sm font-medium mb-2">Select criteria to filter by:</div>
-                    <div className="space-y-2">
-                        {filterOptions.map(option => {
-                            const activeFilter = filters.find(f => f.field === option.field);
-                            const selectedCount = activeFilter?.value?.length || 0;
-                            
-                            return (
-                                <div
-                                    key={option.field}
-                                    className="flex items-center space-x-2 p-2 hover:bg-gray-100 rounded-md cursor-pointer"
-                                    onClick={() => setSelectedCriteria(option.field)}
-                                >
-                                    <div className="flex-1">
-                                        <div className="text-sm font-medium">{option.label}</div>
-                                        <div className="text-xs text-gray-500">
-                                            {selectedCount > 0 ? `${selectedCount} selected` : 'No filters'}
-                                        </div>
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-gray-500" />
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            ) : (
-                // Show value selection when criteria is selected
-                <>
-                    <div className="flex items-center space-x-2">
-                        <button
-                            className="text-sm text-primary-600 hover:text-primary-800 flex items-center"
-                            onClick={() => {
-                                setSelectedCriteria(null);
-                                setSearchQuery("");
-                            }}
-                        >
-                            <ChevronLeft className="w-4 h-4" />
-                            Back
-                        </button>
-                        <div className="text-sm font-medium">{selectedOption?.label}</div>
-                    </div>
-                    
-                    <Input
-                        placeholder="Search values..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="mb-2"
-                    />
-                    
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                        {filteredValues.map(value => {
-                            const filter = filters.find(f => f.field === selectedCriteria);
-                            const isChecked = filter?.value?.includes(value) ?? false;
-                            const label = selectedOption?.field === 'output_tokens' 
-                                ? `${value}-${value + 100} tokens`
-                                : String(value);
-                            
-                            return (
-                                <div key={value} className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id={`${selectedCriteria}-${value}`}
-                                        checked={isChecked}
-                                        onCheckedChange={() => handleSelectionChange(selectedCriteria, value)}
-                                    />
-                                    <label 
-                                        htmlFor={`${selectedCriteria}-${value}`}
-                                        className="text-sm cursor-pointer"
-                                    >
-                                        {label}
-                                    </label>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
         </div>
     );
 };
@@ -578,33 +455,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
         return options;
     }, [runs]);
 
-    const addFilter = (field: string, values: any[]) => {
-        setFilters(prev => {
-            if (values.length === 0) {
-                // Remove the filter if no values are selected
-                return prev.filter(f => f.field !== field);
-            }
-            
-            const existingFilter = prev.find(f => f.field === field);
-            if (existingFilter) {
-                // Update existing filter with new values
-                return prev.map(f => {
-                    if (f.field === field) {
-                        return { ...f, value: values };
-                    }
-                    return f;
-                });
-            }
-            
-            // Add new filter
-            return [...prev, { field, value: values }];
-        });
-    };
-
-    const removeFilter = (index: number) => {
-        setFilters(prev => prev.filter((_, i) => i !== index));
-    };
-
     return (
         <div className="space-y-4 h-full flex flex-col">
             {isLoading ? (
@@ -683,47 +533,12 @@ export function MetricsView({ runs }: MetricsViewProps) {
                         <div className="border-b border-gray-200 p-4 flex-none">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" size="sm" className="flex items-center gap-2">
-                                            <FilterIcon className="w-4 h-4" />
-                                            Add Filter
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-64">
-                                        <FilterSelector 
-                                            filterOptions={getFilterOptions} 
-                                            filters={filters} 
-                                            addFilter={addFilter}
-                                        />
-                                    </PopoverContent>
-                                </Popover>
                             </div>
-                            {filters.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                    {filters.map((filter, index) => (
-                                        <Badge
-                                            key={index}
-                                            variant="secondary"
-                                            className="flex items-center gap-1"
-                                        >
-                                            {getFilterOptions.find(opt => opt.field === filter.field)?.label}:
-                                            {Array.isArray(filter.value) && filter.value.map((v, i) => (
-                                                <span key={i}>
-                                                    {filter.field === 'output_tokens' ? `${v}-${v + 100}` : v}
-                                                    {i < filter.value.length - 1 ? ', ' : ''}
-                                                </span>
-                                            ))}
-                                            <button
-                                                onClick={() => removeFilter(index)}
-                                                className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        </Badge>
-                                    ))}
-                                </div>
-                            )}
+                            <RunsFilter 
+                                filterOptions={getFilterOptions}
+                                filters={filters}
+                                onFilterChange={setFilters}
+                            />
                         </div>
 
                         <ScrollArea className="flex-1">

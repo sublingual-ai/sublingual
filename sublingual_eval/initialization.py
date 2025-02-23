@@ -8,6 +8,7 @@ from sublingual_eval.django_logger import (
     setup_django_asgi_logging,
     setup_django_wsgi_logging,
 )
+from sublingual_eval.flask_logger import setup_flask_logging
 import os
 import sysconfig
 
@@ -43,6 +44,7 @@ def init():
         os.getenv("SUBL_PATCH_OPENAI", "0") == "1" 
         or os.getenv("SUBL_PATCH_FASTAPI", "0") == "1" 
         or os.getenv("SUBL_PATCH_DJANGO", "0") == "1"
+        or os.getenv("SUBL_PATCH_FLASK", "0") == "1"
     ):
         subl_logs_path = os.path.join(os.getcwd(), ".sublingual", "logs")
         if not os.path.exists(os.path.join(os.getcwd(), ".sublingual")):
@@ -59,6 +61,9 @@ def init():
     if os.getenv("SUBL_PATCH_DJANGO", "0") == "1":
         setup_django_asgi_logging()
         setup_django_wsgi_logging()
+    if os.getenv("SUBL_PATCH_FLASK", "0") == "1":
+        os.environ["FLASK_RUN_FROM_RELOADER"] = "false"
+        setup_flask_logging()
     print(
         f"Initialized logging for {os.getenv('SUBL_PATCH_OPENAI', '0')} and {os.getenv('SUBL_PATCH_FASTAPI', '0')}"
     )

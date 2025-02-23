@@ -51,6 +51,7 @@ def init():
             os.makedirs(os.path.join(os.getcwd(), ".sublingual"))
         if not os.path.exists(subl_logs_path):
             os.makedirs(subl_logs_path)
+        print("\033[92m\033[94m[sublingual]\033[0m Logging enabled \033[92m✔\033[0m")
     
     # Setup logging
     if os.getenv("SUBL_PATCH_OPENAI", "0") == "1":
@@ -64,6 +65,4 @@ def init():
     if os.getenv("SUBL_PATCH_FLASK", "0") == "1":
         os.environ["FLASK_RUN_FROM_RELOADER"] = "false"
         setup_flask_logging()
-    print(
-        f"Initialized logging for {os.getenv('SUBL_PATCH_OPENAI', '0')} and {os.getenv('SUBL_PATCH_FASTAPI', '0')}"
-    )
+    

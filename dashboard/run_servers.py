@@ -6,6 +6,8 @@ import time
 import argparse
 import psutil
 import socket
+import itertools
+import threading
 
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -59,46 +61,129 @@ def check_ports_and_kill_processes(flask_port, react_port):
     # Add a small delay after killing processes to ensure ports are freed
     time.sleep(1)
 
+def create_box(message, style='single'):
+    chars = {
+        'single': {'tl': '┌', 'tr': '┐', 'bl': '└', 'br': '┘', 'h': '─', 'v': '│'},
+        'double': {'tl': '╔', 'tr': '╗', 'bl': '╚', 'br': '╝', 'h': '═', 'v': '║'},
+    }
+    box = chars[style]
+    width = len(message) + 2
+    top = f"{box['tl']}{box['h'] * width}{box['tr']}"
+    middle = f"{box['v']} {message} {box['v']}"
+    bottom = f"{box['bl']}{box['h'] * width}{box['br']}"
+    return f"{top}\n{middle}\n{bottom}"
+
+class Spinner:
+    def __init__(self, message="", is_last=False):
+        self.spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+        self.stop_running = False
+        self.spin_thread = None
+        self.message = message
+        self.box_width = 41  # Match status box total width
+        self.is_last = is_last
+
+    def spin(self):
+        while not self.stop_running:
+            spinner_char = next(self.spinner)
+            line = f"║ {spinner_char} {self.message}{' ' * (self.box_width - len(self.message) - 1)}║"
+            sys.stdout.write('\r' + line)
+            sys.stdout.flush()
+            time.sleep(0.1)
+        
+        # Show completion message
+        line = f"║ ✓ {self.message}{' ' * (self.box_width - len(self.message) - 1)}║"
+        sys.stdout.write('\r' + line)
+        if not self.is_last:
+            sys.stdout.write('\n')
+        else:
+            sys.stdout.write('\n')  # Extra newline before the connecting border
+        sys.stdout.flush()
+
+    def __enter__(self):
+        self.stop_running = False
+        self.spin_thread = threading.Thread(target=self.spin)
+        self.spin_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_running = True
+        if self.spin_thread:
+            self.spin_thread.join()
+
 def start_react(react_dir, port=5361):
     # Check if dependencies are installed
     node_modules = os.path.join(react_dir, 'node_modules')
     if not os.path.exists(node_modules):
-        print("Installing React dependencies...")
-        subprocess.check_call(['npm', 'install'], cwd=react_dir)
+        with Spinner("Installing React dependencies...", is_last=False):
+            subprocess.check_call(['npm', 'install'], cwd=react_dir)
+    
     # Start the React dev server with specified port
-    print("Starting React server...")
-    return subprocess.Popen(
-        ['npm', 'run', 'dev', '--', '--port', str(port)], 
-        cwd=react_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    with Spinner("Starting React server...", is_last=False):
+        proc = subprocess.Popen(
+            ['npm', 'run', 'dev', '--', '--port', str(port)], 
+            cwd=react_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        # Give it a moment to start
+        time.sleep(2)
+        return proc
 
 def start_flask(flask_dir, port='5360', log_dir='logs', verbose=False):
     # Use absolute path from current working directory
     abs_log_dir = os.path.abspath(log_dir)
     
     # Start the Flask server using app.py with custom arguments
-    print(f"Starting Flask server with logs at: {abs_log_dir}")
-    return subprocess.Popen(
-        ['python', os.path.join(flask_dir, 'app.py'), '--port', str(port), '--log-dir', abs_log_dir],
-        stdout=sys.stdout if verbose else subprocess.DEVNULL,
-        stderr=sys.stderr if verbose else subprocess.DEVNULL
-    )
+    with Spinner(f"Starting Flask server...", is_last=True):
+        proc = subprocess.Popen(
+            ['python', os.path.join(flask_dir, 'app.py'), '--port', str(port), '--log-dir', abs_log_dir],
+            stdout=sys.stdout if verbose else subprocess.DEVNULL,
+            stderr=sys.stderr if verbose else subprocess.DEVNULL
+        )
+        # Give it a moment to start
+        time.sleep(2)
+        return proc
 
-def print_startup_message(flask_port, react_port):
+def print_startup_message(flask_port, react_port, log_dir):
     # ANSI escape codes for colors
     BLUE = '\033[94m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     RESET = '\033[0m'
     
-    print("\n" + "=" * 60)
-    print(f"🚀 Servers started successfully!")
-    print(f"📱 Frontend available at: {BLUE}http://localhost:{react_port}{RESET}")
-    print(f"🔧 API server running at: {YELLOW}http://localhost:{flask_port}{RESET}")
-    print(f"💡 {GREEN}Press Ctrl+C to stop the servers{RESET}")
-    print("=" * 60 + "\n")
+    # Truncate log_dir from the left if too long, preserving 30 chars
+    max_path_length = 30
+    truncated_log_dir = log_dir if len(log_dir) <= max_path_length else '...' + log_dir[-(max_path_length-3):]
+    
+    messages = [
+        "🚀 Servers started successfully!",
+        f"📱 Frontend: {BLUE}http://localhost:{react_port}{RESET}",
+        f"🔧 API server: {YELLOW}http://localhost:{flask_port}{RESET}",
+        f"📁 Logs: {YELLOW}{truncated_log_dir}{RESET}",
+        f"💡 {GREEN}Press Ctrl+C to stop the servers{RESET}"
+    ]
+    
+    # Calculate the width needed for the box (37 chars)
+    content_width = max(len(msg.replace('\033[94m', '')
+                          .replace('\033[92m', '')
+                          .replace('\033[93m', '')
+                          .replace('\033[0m', '')) 
+                       for msg in messages)
+    width = content_width + 5  # Add padding
+    
+    # First print the connecting border
+    print(f"╠{'═' * width}╣")
+    
+    # Then the rest of the box
+    for msg in messages:
+        clean_msg = (msg.replace('\033[94m', '')
+                      .replace('\033[92m', '')
+                      .replace('\033[93m', '')
+                      .replace('\033[0m', ''))
+        padding = ' ' * (width - len(clean_msg) - 3)
+        print(f"║ {msg}{padding} ║")
+    print(f"╚{'═' * width}╝")
+    print()
 
 def main(args):
     # Check if log directory exists
@@ -132,7 +217,7 @@ def main(args):
 
     # Print the nice formatted message if not in verbose mode
     if not args.verbose:
-        print_startup_message(args.flask_port, args.react_port)
+        print_startup_message(args.flask_port, args.react_port, abs_log_dir)
 
     def shutdown(sig, frame):
         print("\nShutting down servers...")
@@ -153,11 +238,6 @@ def main(args):
     shutdown(None, None)
 
 if __name__ == '__main__':
-    # This is just for direct script execution, not used by subl
-    parser = argparse.ArgumentParser(description='Start the dashboard servers')
-    parser.add_argument('--log-dir', default=os.path.join(os.getcwd(), '.sublingual', 'logs'), 
-                       help='Directory containing the log files (default: .sublingual/logs)')
-    parser.add_argument('--flask-port', type=int, default=5360, help='Port for the Flask server (default: 5360)')
-    parser.add_argument('--react-port', type=int, default=5361, help='Port for the React server (default: 5361)')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Show Flask server output')
-    main(parser.parse_args())
+    # Import CLI handling from separate module
+    from cli import parse_args
+    main(parse_args())

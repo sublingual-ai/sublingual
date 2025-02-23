@@ -1,17 +1,18 @@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, ChevronDown, ChevronRight, Tag, Users, Hash } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { Search, ChevronDown, ChevronRight, Tag, Hash } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Message, StackInfo, LLMRun } from "@/types/logs";
+import { Message, StackInfo, LLMRun, Filter, FilterOption } from "@/types/logs";
 import { LLMInteraction } from "@/components/LLMInteraction";
 import { SearchInput } from "@/components/ui/search-input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { runContainsText } from "@/utils/filterUtils";
 import { LLMHeader } from "@/components/LLMHeader";
 import { API_BASE_URL } from '@/config';
+import { RunsFilter } from "@/components/RunsFilter";
 
 const CodePopup = ({
   stackInfo,
@@ -129,6 +130,7 @@ export const RunsList = ({ runs }: RunsListProps) => {
   } | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [fullTextContent, setFullTextContent] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filter[]>([]);
 
   // Reset states when runs change (file changes)
   useEffect(() => {
@@ -139,6 +141,7 @@ export const RunsList = ({ runs }: RunsListProps) => {
     setPopupInfo(null);
     setExpandedGroups([]);
     setFullTextContent(null);
+    setFilters([]);
   }, [runs]);
 
   useEffect(() => {
@@ -285,6 +288,39 @@ export const RunsList = ({ runs }: RunsListProps) => {
 
   const filteredRuns = runs.filter(run => runContainsText(run, searchTerm));
 
+  // Add near other useMemo hooks
+  const getFilterOptions = useMemo((): FilterOption[] => {
+    return [
+        {
+            field: 'model',
+            label: 'Model',
+            values: Array.from(new Set(runs.map(run => run.response.model))),
+            type: 'multiselect'
+        },
+        {
+            field: 'temperature',
+            label: 'Temperature',
+            values: Array.from(new Set(runs.map(run => run.call_parameters.temperature))),
+            type: 'multiselect'
+        },
+        {
+            field: 'filename',
+            label: 'File Name',
+            values: Array.from(new Set(runs.map(run => run.stack_info?.filename).filter(Boolean))),
+            type: 'multiselect'
+        },
+        {
+            field: 'output_tokens',
+            label: 'Output Tokens',
+            values: Array.from(new Set(runs.map(run => {
+                const tokens = run.usage.total_tokens;
+                return Math.floor(tokens / 100) * 100;
+            }))).sort((a, b) => a - b),
+            type: 'multiselect'
+        }
+    ];
+  }, [runs]);
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in h-full flex flex-col">
       <div className="p-4 border-b border-gray-100 flex-shrink-0">
@@ -296,27 +332,14 @@ export const RunsList = ({ runs }: RunsListProps) => {
             placeholder="Search in runs..."
           />
         </div>
+        <div className="mt-4">
+          <RunsFilter 
+            filterOptions={getFilterOptions}
+            filters={filters}
+            onFilterChange={setFilters}
+          />
+        </div>
         <div className="mt-4 space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <span className="text-sm font-medium text-gray-700 flex items-center">
-              <Users className="w-4 h-4 mr-2" />
-              Files:
-            </span>
-            {allCallers.map(caller => (
-              <Badge
-                key={caller}
-                variant="secondary"
-                className={`cursor-pointer ${selectedCallers.includes(caller)
-                  ? "bg-primary-100 text-primary-700"
-                  : "bg-gray-100 text-gray-700"
-                  }`}
-                onClick={() => toggleCaller(caller)}
-              >
-                {caller.split('/').pop()}
-              </Badge>
-            ))}
-          </div>
-
           {selectedReqIds.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <span className="text-sm font-medium text-gray-700 flex items-center">

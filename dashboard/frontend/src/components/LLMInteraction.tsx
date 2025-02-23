@@ -248,7 +248,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                     </>
                   )}
                 </div>
-                <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+                <div className="text-sm whitespace-pre-wrap break-words mt-2">
                   {renderContent(msg.content)}
                 </div>
               </div>
@@ -267,7 +267,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                     <span className="text-xs text-primary-600">Response [{index}]</span>
                   </div>
                   <div 
-                    className={`text-sm whitespace-pre-wrap overflow-x-auto mt-2 ${
+                    className={`text-sm whitespace-pre-wrap break-words mt-2 ${
                       responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
                     }`}
                     onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}

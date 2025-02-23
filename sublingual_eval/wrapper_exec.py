@@ -19,6 +19,7 @@ def main():
     # Env vars to select which modules to patch
     os.environ["SUBL_PATCH_OPENAI"] = "1"
     os.environ["SUBL_PATCH_FASTAPI"] = "1"
+    os.environ["SUBL_PATCH_DJANGO"] = "1"
 
     handle_pth()  # Write .pth file to enable logging on all python calls
     init()

@@ -20,7 +20,7 @@ output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
 def write_logged_data(subl_logs_path, logged_data, file_name):
     with open(os.path.join(subl_logs_path, file_name), "a") as f:
         f.write(json.dumps(logged_data) + "\n")
-    print(f"Logged data written to {os.path.join(subl_logs_path, file_name)}")
+    # print(f"Logged data written to {os.path.join(subl_logs_path, file_name)}")
 
 def create_logged_data(result, args, kwargs, caller_frame):
     """Create the logged data dictionary from a completion result"""
@@ -43,8 +43,6 @@ def create_logged_data(result, args, kwargs, caller_frame):
             "code_context": code_context,
             "function": frame_info.function,
         })
-
-    print(stack_info)
     
     return {
         "log_id": str(uuid.uuid4()),

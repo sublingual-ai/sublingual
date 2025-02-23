@@ -86,6 +86,21 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
 };
 
 export const CallHierarchy = ({ runs, selectedSessionId }: CallHierarchyProps) => {
+  // Reset TreeNode states when runs or session changes
+  useEffect(() => {
+    // Find all TreeNode instances and reset their states
+    const treeNodes = document.querySelectorAll('.tree-node');
+    treeNodes.forEach(node => {
+      const instance = (node as any).__reactFiber$;
+      if (instance && instance.stateNode && instance.stateNode.setState) {
+        instance.stateNode.setState({
+          isExpanded: true,
+          showRuns: true
+        });
+      }
+    });
+  }, [runs, selectedSessionId]);
+
   const buildHierarchy = (runs: LLMRun[]) => {
     const filteredRuns = runs.filter(run => {
       if (run.session_id) {

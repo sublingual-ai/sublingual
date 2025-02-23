@@ -130,6 +130,17 @@ export const RunsList = ({ runs }: RunsListProps) => {
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [fullTextContent, setFullTextContent] = useState<string | null>(null);
 
+  // Reset states when runs change (file changes)
+  useEffect(() => {
+    setExpandedRuns([]);
+    setSearchTerm("");
+    setSelectedCallers([]);
+    setSelectedReqIds([]);
+    setPopupInfo(null);
+    setExpandedGroups([]);
+    setFullTextContent(null);
+  }, [runs]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popupInfo &&

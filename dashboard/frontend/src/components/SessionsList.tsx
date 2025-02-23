@@ -20,6 +20,12 @@ export const SessionsList = ({ runs }: SessionsListProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const sessions = useMemo(() => groupRunsIntoSessions(runs), [runs]);
 
+  // Reset states when runs change (file changes)
+  useEffect(() => {
+    setExpandedSessions([]);
+    setSearchTerm("");
+  }, [runs]);
+
   const toggleSession = (sessionId: string) => {
     setExpandedSessions(prev =>
       prev.includes(sessionId)

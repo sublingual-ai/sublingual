@@ -118,7 +118,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
     const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
     const [loadingStates, setLoadingStates] = useState<LoadingState>({});
 
-    // Remove isLoading state and loading effect
+    // Reset states when runs change (file changes)
     useEffect(() => {
         setExpandedRuns([]);
         setSelectedCriteria([]);

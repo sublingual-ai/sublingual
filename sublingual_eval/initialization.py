@@ -4,6 +4,10 @@ from sublingual_eval.openai_logger import (
     setup_openai_async_logging,
 )
 from sublingual_eval.fastapi_logger import setup_fastapi_logging
+from sublingual_eval.django_logger import (
+    setup_django_asgi_logging,
+    setup_django_wsgi_logging,
+)
 import os
 import sysconfig
 
@@ -35,8 +39,11 @@ def init():
     """Initialize all logging functionality"""
 
     # Create the sublingual logs directory
-    if (os.getenv("SUBL_PATCH_OPENAI", "0") == "1" or
-        os.getenv("SUBL_PATCH_FASTAPI", "0") == "1"):
+    if (
+        os.getenv("SUBL_PATCH_OPENAI", "0") == "1" 
+        or os.getenv("SUBL_PATCH_FASTAPI", "0") == "1" 
+        or os.getenv("SUBL_PATCH_DJANGO", "0") == "1"
+    ):
         subl_logs_path = os.path.join(os.getcwd(), ".sublingual", "logs")
         if not os.path.exists(os.path.join(os.getcwd(), ".sublingual")):
             os.makedirs(os.path.join(os.getcwd(), ".sublingual"))
@@ -49,6 +56,9 @@ def init():
         setup_openai_async_logging(subl_logs_path)
     if os.getenv("SUBL_PATCH_FASTAPI", "0") == "1":
         setup_fastapi_logging()
+    if os.getenv("SUBL_PATCH_DJANGO", "0") == "1":
+        setup_django_asgi_logging()
+        setup_django_wsgi_logging()
     print(
         f"Initialized logging for {os.getenv('SUBL_PATCH_OPENAI', '0')} and {os.getenv('SUBL_PATCH_FASTAPI', '0')}"
     )

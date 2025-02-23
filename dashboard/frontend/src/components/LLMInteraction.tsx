@@ -4,7 +4,6 @@ import { Message, LLMRun, ToolCall } from "@/types/logs";
 
 interface LLMInteractionProps {
   run: LLMRun;
-  showHeader?: boolean;
 }
 
 interface ToolCallArgs {
@@ -127,32 +126,12 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
   );
 };
 
-export function LLMInteraction({ run, showHeader = true }: LLMInteractionProps) {
+export function LLMInteraction({ run }: LLMInteractionProps) {
   const toolCalls = run.response.choices[0].message.tool_calls;
   const responseText = run.response_texts[0];
 
   return (
     <div className="space-y-2">
-      {showHeader && (
-        <div className="flex items-center space-x-2">
-          <Badge variant="outline" className="text-xs text-primary-700">
-            {run.response.model}
-          </Badge>
-          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-            {run.response.usage.total_tokens} tokens
-          </Badge>
-          {toolCalls && (
-            <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">
-              <Wrench size={12} className="mr-1 inline" />
-              Tool Call
-            </Badge>
-          )}
-          <span className="text-xs text-gray-500">
-            {new Date(run.timestamp * 1000).toLocaleString()}
-          </span>
-        </div>
-      )}
-
       <div className="space-y-2">
         {run.messages.map((msg, msgIndex) => (
           <div

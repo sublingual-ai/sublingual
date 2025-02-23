@@ -5,6 +5,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronRight, ChevronDown, Code, MessageSquare, User, Bot } from 'lucide-react';
 import { LLMInteraction } from '@/components/LLMInteraction';
+import { LLMHeader } from '@/components/LLMHeader';
 
 interface CallHierarchyProps {
   runs: LLMRun[];
@@ -49,6 +50,12 @@ const TreeNode = ({ node, level = 0 }: { node: CallNode; level?: number }) => {
             </Badge>
           )}
         </div>
+
+        {hasRuns && (
+          <div className="mt-2">
+            <LLMHeader run={node.runs[0]} />
+          </div>
+        )}
       </div>
 
       {/* Show the actual LLM interactions */}

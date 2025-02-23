@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Tag, Code } from "lucide-react";
 import { Message, StackInfo, LLMRun } from "@/types/logs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { LLMInteraction } from "@/components/LLMInteraction";
+import { LLMHeader } from "@/components/LLMHeader";
 
 interface SessionDetailsProps {
   runs: LLMRun[];
@@ -86,15 +87,15 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
     <div className="space-y-4 p-4">
       {runs.map((run, index) => {
         const stackInfo = getStackInfo(run);
-        
+
         return (
-          <div 
+          <div
             key={index}
             className="relative pl-6 border-l-2 border-primary-200 last:border-l-0 pb-4 mb-4 last:mb-0 last:pb-0"
           >
             {/* Timeline dot */}
             <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-primary-200" />
-            
+
             <div className="space-y-2">
               {/* Location and buttons */}
               <div className="flex items-center justify-between">
@@ -124,16 +125,8 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
                 </button>
               </div>
 
-              {/* Timestamp, model, and tokens */}
-              <div className="flex items-center space-x-3 text-xs text-gray-500">
-                <span>{new Date(run.timestamp * 1000).toLocaleString()}</span>
-                <span>•</span>
-                <Badge variant="outline" className="text-xs text-primary-700">
-                  {run.response.model}
-                </Badge>
-                <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                  {run.response.usage.total_tokens} tokens
-                </Badge>
+              <div className="mt-2">
+                <LLMHeader run={run} />
               </div>
 
               {/* Stack trace (if expanded) */}
@@ -141,8 +134,8 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
                 <div className="text-xs text-gray-500 space-y-1 bg-gray-50 p-2 rounded-md mb-2">
                   <div className="font-medium mb-2 text-gray-700">Call Stack:</div>
                   {stackInfo.frames.map((frame, frameIndex) => (
-                    <div 
-                      key={frameIndex} 
+                    <div
+                      key={frameIndex}
                       className={`mb-4 last:mb-0 pl-4 ${frameIndex > 0 ? 'border-l-2 border-gray-200' : ''}`}
                     >
                       <div className="flex items-center space-x-2 mb-1">
@@ -153,7 +146,7 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
                       </div>
                       <div className="font-mono whitespace-pre overflow-x-auto border border-gray-200 rounded bg-white p-2 ml-4">
                         {frame.code_context.map((line, i) => (
-                          <div 
+                          <div
                             key={i}
                             className={i === Math.floor(frame.code_context.length / 2) ? 'bg-green-100' : ''}
                           >
@@ -167,10 +160,9 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
               )}
 
               {/* Messages (collapsed or expanded) */}
-              <LLMInteraction 
-                run={run}
-                showHeader={false}
-              />
+              <div className="space-y-2">
+                <LLMInteraction run={run} />
+              </div>
             </div>
           </div>
         );

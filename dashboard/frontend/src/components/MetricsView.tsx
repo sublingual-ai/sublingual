@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { LLMInteraction } from "@/components/LLMInteraction";
+import { LLMHeader } from "@/components/LLMHeader";
 
 interface MetricsViewProps {
     runs: LLMRun[];
@@ -393,18 +394,13 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                                     {run.stack_info?.caller_function_name || 'Unknown Caller'}
                                                 </h3>
                                             </div>
+                                            <LLMHeader run={run} />
                                             <div className="flex items-center space-x-2 mt-1">
                                                 {run.stack_info && (
                                                     <Badge variant="outline" className="text-xs text-primary-700">
                                                         {run.stack_info.filename}:{run.stack_info.lineno}
                                                     </Badge>
                                                 )}
-                                                <Badge variant="outline" className="text-xs text-primary-700">
-                                                    {run.response.model}
-                                                </Badge>
-                                                <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                                                    {run.response.usage.total_tokens} tokens
-                                                </Badge>
                                             </div>
                                             {selectedCriteria.length > 0 && (
                                                 <div className="flex items-center space-x-4 mt-2">
@@ -420,7 +416,9 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                 </div>
                                 {isExpanded && (
                                     <div className="px-4 pb-4">
-                                        <LLMInteraction run={run} showHeader={false} />
+                                        <div className="space-y-2">
+                                            <LLMInteraction run={run} />
+                                        </div>
                                     </div>
                                 )}
                             </div>

@@ -10,6 +10,7 @@ import { LLMInteraction } from "@/components/LLMInteraction";
 import { SearchInput } from "@/components/ui/search-input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { runContainsText } from "@/utils/filterUtils";
+import { LLMHeader } from "@/components/LLMHeader";
 
 const CodePopup = ({
   stackInfo,
@@ -385,12 +386,9 @@ export const RunsList = () => {
                               {run.stack_info.filename}:{run.stack_info.lineno}
                             </Badge>
                           )}
-                          <Badge variant="outline" className="text-xs text-primary-700">
-                            {run.response.model}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-                            {run.response.usage.total_tokens} tokens
-                          </Badge>
+                        </div>
+                        <div className="mt-2">
+                          <LLMHeader run={run} />
                         </div>
                       </div>
                       <span className="text-xs text-gray-500">
@@ -400,7 +398,7 @@ export const RunsList = () => {
                   </div>
                   {isExpanded && (
                     <div className="px-4 pb-4">
-                        <LLMInteraction run={run} showHeader={false} />
+                      <LLMInteraction run={run} />
                     </div>
                   )}
                 </div>

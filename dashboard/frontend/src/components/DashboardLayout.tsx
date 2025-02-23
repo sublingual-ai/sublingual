@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent } from "@/components/ui/sidebar";
-import { Search, FileText, RotateCw } from "lucide-react";
+import { Search, FileText, RotateCw, Pencil } from "lucide-react";
 import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { API_BASE_URL } from '@/config';
@@ -10,6 +10,8 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const { selectedFile, setSelectedFile } = useLogFile();
+  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [newFileName, setNewFileName] = useState("");
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -50,6 +52,33 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
     return match ? match[1] : fullPath;
   };
 
+  const handleRename = async (oldPath: string, newName: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/rename_log`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          old_path: oldPath,
+          new_name: newName,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error);
+      }
+
+      // Refresh the file list
+      fetchLogs();
+      setEditingFile(null);
+    } catch (error) {
+      console.error('Error renaming file:', error);
+      alert('Failed to rename file: ' + error);
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="h-screen flex w-full bg-gray-50">
@@ -85,18 +114,63 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
                       </div>
                     ) : filteredLogs.length > 0 ? (
                       filteredLogs.map((log) => (
-                        <button
+                        <div
                           key={log}
-                          className={`w-full flex items-center px-3 py-2 rounded-md text-sm ${
+                          className={`flex items-center justify-between px-3 py-2 rounded-md text-sm group ${
                             selectedFile === log 
-                              ? 'bg-primary-100 text-primary-900' 
-                              : 'hover:bg-gray-100 text-gray-700'
+                              ? 'bg-primary-100' 
+                              : 'hover:bg-gray-100'
                           }`}
-                          onClick={() => setSelectedFile(log)}
                         >
-                          <FileText className="w-4 h-4 mr-2" />
-                          {getDisplayName(log)}
-                        </button>
+                          {editingFile === log ? (
+                            <form
+                              className="flex-1 flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                handleRename(log, newFileName);
+                              }}
+                            >
+                              <input
+                                type="text"
+                                value={newFileName}
+                                onChange={(e) => setNewFileName(e.target.value)}
+                                className="flex-1 px-2 py-1 text-sm border rounded bg-white"
+                                autoFocus
+                                onBlur={() => {
+                                  setEditingFile(null);
+                                  setNewFileName("");
+                                }}
+                              />
+                            </form>
+                          ) : (
+                            <button
+                              className="flex-1 flex items-center text-left"
+                              onClick={() => setSelectedFile(log)}
+                            >
+                              <FileText className={`w-4 h-4 mr-2 ${
+                                selectedFile === log ? 'text-primary-900' : 'text-gray-500'
+                              }`} />
+                              <span className={
+                                selectedFile === log ? 'text-primary-900' : 'text-gray-700'
+                              }>
+                                {getDisplayName(log)}
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (editingFile !== log) {
+                                setEditingFile(log);
+                                setNewFileName(getDisplayName(log));
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+                            title="Rename file"
+                          >
+                            <Pencil className="w-3 h-3 text-gray-500" />
+                          </button>
+                        </div>
                       ))
                     ) : (
                       <div className="text-sm text-gray-500 text-center py-4">

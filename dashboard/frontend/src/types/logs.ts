@@ -93,4 +93,16 @@ export interface CallNode {
 export interface HierarchyData {
   nodes: CallNode[];
   sessionId?: string;
+}
+
+export interface Filter {
+  field: string;
+  value: any;
+}
+
+export interface FilterOption {
+  field: string;
+  label: string;
+  values: any[];
+  type: 'select' | 'number' | 'boolean' | 'multiselect';
 } 

@@ -12,16 +12,24 @@ export const useLogs = (selectedFile: string | null) => {
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedFile) return;
-      
+
       setIsLoading(true);
       setError(null);
-      
+
       try {
         const res = await fetch(`${API_BASE_URL}/get_log?filename=${selectedFile}`);
         if (!res.ok) {
           throw new Error('Failed to fetch logs');
         }
         const data: LLMRun[] = await res.json();
+
+        // Construct response_texts array from response choices
+        data.forEach(run => {
+          if (run.response?.choices) {
+            run.response_texts = run.response.choices.map(choice => choice.message.content);
+          }
+        });
+
         setRuns(data);
         setSessions(groupRunsIntoSessions(data));
       } catch (error) {

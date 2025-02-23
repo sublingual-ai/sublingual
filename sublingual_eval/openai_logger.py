@@ -96,7 +96,7 @@ def create_logged_data(result, args, kwargs, caller_frame):
         "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),
         "messages": processed_messages,
-        "response_texts": [choice.message.content for choice in result.choices],
+        # "response_texts": [choice.message.content for choice in result.choices],
         "symbolic_mappings": [],  # Simplified for now
         "response": response_dict,
         "usage": result.usage.to_dict(),

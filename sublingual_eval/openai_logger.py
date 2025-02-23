@@ -43,17 +43,65 @@ def create_logged_data(result, args, kwargs, caller_frame):
             "code_context": code_context,
             "function": frame_info.function,
         })
+
+    # Process messages to handle base64 images
+    messages = kwargs.get("messages", [])
+    processed_messages = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            processed_msg = msg.copy()
+            content = msg.get("content")
+            
+            # Handle list-type content (multimodal messages)
+            if isinstance(content, list):
+                processed_content = []
+                for item in content:
+                    if isinstance(item, dict):
+                        item_copy = item.copy()
+                        # Check for base64 images in image_url
+                        if "image_url" in item_copy:
+                            url = item_copy["image_url"].get("url", "")
+                            if url and url.startswith("data:image"):
+                                item_copy["image_url"]["url"] = "[BASE64_IMAGE_REMOVED]"
+                        processed_content.append(item_copy)
+                    else:
+                        processed_content.append(item)
+                processed_msg["content"] = processed_content
+            
+            processed_messages.append(processed_msg)
+        else:
+            processed_messages.append(msg)
+
+    # Process response to handle base64 images
+    response_dict = result.to_dict()
+    for choice in response_dict.get("choices", []):
+        message = choice.get("message", {})
+        content = message.get("content")
+        
+        if isinstance(content, list):
+            processed_content = []
+            for item in content:
+                if isinstance(item, dict):
+                    item_copy = item.copy()
+                    if "image_url" in item_copy:
+                        url = item_copy["image_url"].get("url", "")
+                        if url and url.startswith("data:image"):
+                            item_copy["image_url"]["url"] = "[BASE64_IMAGE_REMOVED]"
+                    processed_content.append(item_copy)
+                else:
+                    processed_content.append(item)
+            message["content"] = processed_content
     
     return {
         "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),
-        "messages": kwargs.get("messages", []),
+        "messages": processed_messages,
         "response_texts": [choice.message.content for choice in result.choices],
         "symbolic_mappings": [],  # Simplified for now
-        "response": result.to_dict(),
+        "response": response_dict,
         "usage": result.usage.to_dict(),
         "timestamp": int(time.time()),
-        "stack_trace": stack_info,  # Replace single stack_info with full trace
+        "stack_trace": stack_info,
         "call_parameters": {
             "model": kwargs.get("model", ""),
             "temperature": kwargs.get("temperature", 0),

@@ -10,6 +10,11 @@ def setup_django_asgi_logging():
     try:
         from django.core.handlers.asgi import ASGIHandler
 
+        # Check if already patched
+        if getattr(ASGIHandler.__call__, '_is_request_id_patched', False):
+            logger.debug("ASGIHandler.__call__ already patched; skipping patch")
+            return True
+
         original_asgi_call = ASGIHandler.__call__
 
         async def custom_asgi_call(self, scope, receive, send):
@@ -19,6 +24,9 @@ def setup_django_asgi_logging():
                 return response
             finally:
                 request_id_ctx_var.reset(token)
+
+        # Mark the patched function to avoid double patching
+        custom_asgi_call._is_request_id_patched = True
 
         ASGIHandler.__call__ = custom_asgi_call
         logger.debug("Successfully monkey-patched ASGIHandler.__call__ for request ID injection")
@@ -31,6 +39,11 @@ def setup_django_wsgi_logging():
     try:
         from django.core.handlers.wsgi import WSGIHandler
 
+        # Check if already patched
+        if getattr(WSGIHandler.__call__, '_is_request_id_patched', False):
+            logger.debug("WSGIHandler.__call__ already patched; skipping patch")
+            return True
+
         original_wsgi_call = WSGIHandler.__call__
 
         def custom_wsgi_call(self, environ, start_response):
@@ -40,6 +53,9 @@ def setup_django_wsgi_logging():
                 return response
             finally:
                 request_id_ctx_var.reset(token)
+
+        # Mark the patched function to avoid double patching
+        custom_wsgi_call._is_request_id_patched = True
 
         WSGIHandler.__call__ = custom_wsgi_call
         logger.debug("Successfully monkey-patched WSGIHandler.__call__ for request ID injection")

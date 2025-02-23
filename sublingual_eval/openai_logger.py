@@ -77,12 +77,12 @@ def setup_openai_logging(subl_logs_path: str):
         # Make the original call
         result = original_completions_create(self, *args, **kwargs)
         try:
-            logger.debug(f"Request ID: {request_id_ctx_var.get()}")
-            logger.debug(
-                "completions.Completions.create called with args: %s, kwargs: %s",
-                args,
-                kwargs,
-            )
+            # logger.debug(f"Request ID: {request_id_ctx_var.get()}")
+            # logger.debug(
+            #     "completions.Completions.create called with args: %s, kwargs: %s",
+            #     args,
+            #     kwargs,
+            # )
 
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)
@@ -103,12 +103,12 @@ def setup_openai_async_logging(subl_logs_path: str):
         # Make the original call
         result = await original_acreate(self, *args, **kwargs)
         try:
-            logger.debug(request_id_ctx_var.get())
-            logger.debug(
-                "completions.AsyncCompletions.create called with args: %s, kwargs: %s",
-                args,
-                kwargs,
-            )
+            # logger.debug(request_id_ctx_var.get())
+            # logger.debug(
+            #     "completions.AsyncCompletions.create called with args: %s, kwargs: %s",
+            #     args,
+            #     kwargs,
+            # )
 
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)

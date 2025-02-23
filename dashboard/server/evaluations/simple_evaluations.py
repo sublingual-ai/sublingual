@@ -128,10 +128,11 @@ def correctness(messages, response_object):
     prompt = dedent(
         f"""
         You are a helpful assistant that evaluates the correctness of a given response.
-        Here is the conversation history:
+        ### Conversation History
         {strified_history}
-        Here is the response:
+        ### Response
         {response}
+        ### Instructions
         Return a score between 0 and 100 for the correctness of the response.
         - 0 means completely incorrect
         - 100 means completely correct
@@ -140,9 +141,11 @@ def correctness(messages, response_object):
         """
     )
     res = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
             {"role": "user", "content": prompt},
         ],
     )
+    print("Prompt: ", prompt)
+    print("Response: ", res.choices[0].message.content)
     return extract_boxed(res.choices[0].message.content)

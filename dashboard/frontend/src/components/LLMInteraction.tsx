@@ -127,9 +127,11 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
 };
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
-  const toolCalls = run.response.choices[0].message.tool_calls;
-  const responseText = run.response_texts[0];
-
+  // Get all tool calls and response texts
+  const allToolCalls = run.response.choices.flatMap((choice, index) => 
+    choice.message.tool_calls?.map(toolCall => ({ toolCall, index })) || []
+  );
+  
   return (
     <div className="space-y-2">
       <div className="space-y-2">
@@ -163,20 +165,25 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           </div>
         ))}
 
-        {toolCalls ? (
-          toolCalls.map((toolCall, index) => (
-            <ToolCallDisplay key={index} toolCall={toolCall} />
+        {allToolCalls.length > 0 ? (
+          allToolCalls.map(({ toolCall, index }, toolCallIndex) => (
+            <div key={toolCallIndex}>
+              <Badge variant="outline" className="mb-2">Response [{index}]</Badge>
+              <ToolCallDisplay toolCall={toolCall} />
+            </div>
           ))
-        ) : responseText && (
-          <div className="flex flex-col p-3 rounded-lg bg-primary-50">
-            <div className="flex items-center gap-2">
-              <Bot size={16} className="text-primary-600 flex-shrink-0" />
-              <span className="text-xs text-primary-600">Response</span>
+        ) : run.response_texts && (
+          run.response_texts.map((responseText, index) => (
+            <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
+              <div className="flex items-center gap-2">
+                <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                <span className="text-xs text-primary-600">Response [{index}]</span>
+              </div>
+              <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
+                {responseText}
+              </div>
             </div>
-            <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
-              {responseText}
-            </div>
-          </div>
+          ))
         )}
       </div>
     </div>

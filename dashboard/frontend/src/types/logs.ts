@@ -66,6 +66,7 @@ export interface LLMRun {
     frequency_penalty: number;
     presence_penalty: number;
     stop: string[];
+    n: number;
   };
   extra_info: Record<string, any>;
 }

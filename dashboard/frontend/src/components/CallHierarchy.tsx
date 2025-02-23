@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CallNode, LLMRun } from '@/types/logs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronRight, ChevronDown, Code, MessageSquare, User, Bot } from 'lucide-react';
+import { ChevronRight, ChevronDown, Code, MessageSquare, User, Bot, Loader2 } from 'lucide-react';
 import { LLMInteraction } from '@/components/LLMInteraction';
 import { LLMHeader } from '@/components/LLMHeader';
 

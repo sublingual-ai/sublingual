@@ -114,9 +114,11 @@ const getPreviewText = (messages: Message[], response: string) => {
   return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
 };
 
-export const RunsList = () => {
-  const { selectedFile } = useLogFile();
-  const [runs, setRuns] = useState<LLMRun[]>([]);
+interface RunsListProps {
+  runs: LLMRun[];
+}
+
+export const RunsList = ({ runs }: RunsListProps) => {
   const [expandedRuns, setExpandedRuns] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCallers, setSelectedCallers] = useState<string[]>([]);
@@ -126,31 +128,7 @@ export const RunsList = () => {
     position: { x: number; y: number };
   } | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [fullTextContent, setFullTextContent] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!selectedFile) return;
-      
-      setIsLoading(true);
-      try {
-        const res = await fetch(`${API_BASE_URL}/get_log?filename=${selectedFile}`);
-        if (!res.ok) {
-          throw new Error('Failed to fetch logs');
-        }
-        const data: LLMRun[] = await res.json();
-        setRuns(data.sort((a, b) => b.timestamp - a.timestamp)); // Sort by timestamp, newest first
-      } catch (error) {
-        console.error('Error fetching logs:', error);
-        setRuns([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [selectedFile]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -351,7 +329,7 @@ export const RunsList = () => {
       </div>
 
       <LoadingState 
-        isLoading={isLoading}
+        isLoading={false}
         isEmpty={filteredRuns.length === 0}
         emptyMessage="No runs found"
       />

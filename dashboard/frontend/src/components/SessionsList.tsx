@@ -1,23 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, ChevronDown, ChevronRight, Hash } from "lucide-react";
-import { useLogFile } from "@/contexts/LogFileContext";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
-import { useEffect } from "react";
 import React from "react";
 import { SessionDetails } from "@/components/SessionDetails";
 import { LLMRun, SessionRow } from "@/types/logs";
-import { useLogs } from '@/hooks/useLogs';
 import { SearchInput } from "@/components/ui/search-input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { runContainsText } from "@/utils/filterUtils";
+import { groupRunsIntoSessions } from '@/utils/sessionUtils';
 
-export const SessionsList = () => {
+interface SessionsListProps {
+  runs: LLMRun[];
+}
+
+export const SessionsList = ({ runs }: SessionsListProps) => {
   const [expandedSessions, setExpandedSessions] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const { selectedFile } = useLogFile();
-  const { sessions, isLoading } = useLogs(selectedFile);
+  const sessions = useMemo(() => groupRunsIntoSessions(runs), [runs]);
 
   const toggleSession = (sessionId: string) => {
     setExpandedSessions(prev =>
@@ -45,7 +46,7 @@ export const SessionsList = () => {
       </div>
 
       <LoadingState 
-        isLoading={isLoading}
+        isLoading={false}
         isEmpty={filteredSessions.length === 0}
         emptyMessage="No sessions found"
       />

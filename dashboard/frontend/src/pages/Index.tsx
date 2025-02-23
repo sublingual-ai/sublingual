@@ -78,8 +78,8 @@ const Dashboard = () => {
         </div>
         
         <div className="flex-1 min-h-0">
-          {view === 'runs' && <RunsList />}
-          {view === 'sessions' && <SessionsList />}
+          {view === 'runs' && <RunsList runs={runs}  />}
+          {view === 'sessions' && <SessionsList runs={runs} />}
           {view === 'metrics' && <MetricsView runs={runs} />}
           {view === 'trace' && (
             <div className="flex h-full gap-4">

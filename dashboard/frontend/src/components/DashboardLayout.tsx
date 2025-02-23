@@ -42,6 +42,10 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
     fetchLogs();
   }, []);
 
+  useEffect(() => {
+    setSearchTerm("");
+  }, [selectedFile]);
+
   const filteredLogs = availableLogs.filter(log => 
     log.toLowerCase().includes(searchTerm.toLowerCase())
   );

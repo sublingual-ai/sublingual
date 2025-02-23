@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { LLMRun, Message } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, ChevronUp, Minus, Calculator, Loader2, ChevronRight } from "lucide-react";
@@ -117,6 +117,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
     const [selectedCriteria, setSelectedCriteria] = useState<EvaluationCriteria[]>([]);
     const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
     const [loadingStates, setLoadingStates] = useState<LoadingState>({});
+
+    // Remove isLoading state and loading effect
+    useEffect(() => {
+        setExpandedRuns([]);
+        setSelectedCriteria([]);
+        setEvaluations({});
+        setLoadingStates({});
+    }, [runs]);
 
     const toggleRun = (runId: string) => {
         setExpandedRuns(prev =>

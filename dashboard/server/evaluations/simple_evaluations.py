@@ -30,7 +30,7 @@ def extract_boxed(s):
 
 def random_0_100():
     res = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o-2024-05-13",
         messages=[
             {
                 "role": "user",
@@ -73,7 +73,7 @@ def user_sentiment(messages, response):
         """
     )
     res = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o-2024-05-13",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
@@ -114,7 +114,7 @@ def system_prompt_obedience(messages, response_object):
     )
 
     res = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o-2024-05-13",
         messages=[
             {"role": "user", "content": prompt},
         ],
@@ -125,6 +125,14 @@ def system_prompt_obedience(messages, response_object):
 def correctness(messages, response_object):
     response = response_object["choices"][0]["message"]["content"]
     strified_history = "\n\n".join([f"{m['role']}: {m['content']}" for m in messages])
+    system_prompt = dedent(
+        f"""
+        On a scale of 0 to 100, rate how correct the response is to the user's message.
+        - Say 100 if the response is an accurate answer to the user's message
+        - 0 means the response is completely incorrect
+        - Put your answer in \\boxed{{}}
+        """
+    )
     prompt = dedent(
         f"""
         You are a helpful assistant that evaluates the correctness of a given response.
@@ -132,20 +140,17 @@ def correctness(messages, response_object):
         {strified_history}
         ### Response
         {response}
-        ### Instructions
-        Return a score between 0 and 100 for the correctness of the response.
-        - 0 means completely incorrect
-        - 100 means completely correct
-        - Do NOT say anything else, ONLY output the score
-        - Put your answer in \\boxed{{}}
         """
     )
     res = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-2024-05-13",
         messages=[
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
+        temperature=0.0,
     )
+    print("System Prompt: ", system_prompt)
     print("Prompt: ", prompt)
     print("Response: ", res.choices[0].message.content)
     return extract_boxed(res.choices[0].message.content)

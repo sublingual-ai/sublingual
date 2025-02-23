@@ -2,6 +2,7 @@ export interface Message {
   role: string;
   content: string | null;
   tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 export interface StackInfo {

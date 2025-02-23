@@ -4,6 +4,7 @@ subl_logs/
 dist/
 build/
 .sublingual/
+.subl/
 
 # Top level python ignores
 __pycache__/

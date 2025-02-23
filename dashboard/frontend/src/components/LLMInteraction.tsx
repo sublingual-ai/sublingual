@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Bot, User, Wrench, Calculator, Search, Database } from "lucide-react";
 import { Message, LLMRun, ToolCall } from "@/types/logs";
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface LLMInteractionProps {
   run: LLMRun;
@@ -11,55 +12,84 @@ interface ToolCallArgs {
   [key: string]: any;
 }
 
-const CalculatorDisplay = ({ args }: { args: ToolCallArgs }) => {
-  const operation = args.operation;
-  const numbers = args.numbers;
+interface FullMessagePopupProps {
+  content: string | any | null;
+  onClose: () => void;
+}
 
-  const operationSymbols: Record<string, string> = {
-    'add': '+',
-    'subtract': '-',
-    'multiply': '×',
-    'divide': '÷',
-  };
+const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
+  if (content === null) return null;
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   return (
-    <div className="text-sm font-mono bg-blue-100/50 px-3 py-2 rounded">
-      {numbers.join(` ${operationSymbols[operation] || operation} `)}
-    </div>
-  );
-};
-
-const SearchDisplay = ({ args }: { args: ToolCallArgs }) => {
-  return (
-    <div className="text-sm bg-blue-100/50 px-3 py-2 rounded">
-      <div className="font-medium mb-1">Search query:</div>
-      <div className="font-mono">{args.query}</div>
-    </div>
-  );
-};
-
-const DatabaseDisplay = ({ args }: { args: ToolCallArgs }) => {
-  return (
-    <div className="space-y-1">
-      <div className="text-sm font-medium">
-        {args.operation} operation on {args.table}
-      </div>
-      {args.fields && (
-        <div className="text-sm bg-blue-100/50 px-3 py-2 rounded font-mono">
-          {Array.isArray(args.fields) ? args.fields.join(', ') : args.fields}
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 flex flex-col"
+        style={{ height: 'calc(100vh - 100px)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Full Message</h3>
+          <button 
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            ✕
+          </button>
         </div>
-      )}
+        <div className="flex-1 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-2">
+              {typeof content === 'string' ? (
+                <div className="whitespace-pre-wrap text-sm text-gray-900">{content}</div>
+              ) : (
+                <pre className="text-sm text-gray-900">
+                  {JSON.stringify(content, null, 2)}
+                </pre>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
     </div>
   );
 };
 
-const DefaultDisplay = ({ args }: { args: ToolCallArgs }) => {
+const MESSAGE_TRUNCATE_LENGTH = 500;
+
+function truncateContent(content: string, onClick: () => void) {
+  if (content.length <= MESSAGE_TRUNCATE_LENGTH) return content;
+  
+  const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
+  const start = content.slice(0, halfLength);
+  const end = content.slice(-halfLength);
+  
   return (
-    <pre className="text-sm text-blue-600 bg-blue-100/50 p-2 rounded whitespace-pre-wrap">
-      {JSON.stringify(args, null, 2)}
-    </pre>
+    <div 
+      onClick={onClick}
+      className="cursor-pointer hover:bg-gray-50 rounded-md p-2 -mx-2"
+    >
+      <span>{start}</span>
+      <div className="my-3 text-gray-600 font-medium text-sm">
+        Click to see full message
+      </div>
+      <span>{end}</span>
+    </div>
   );
-};
+}
 
 const ObjectDisplay = ({ data }: { data: any }) => {
   const renderValue = (value: any): JSX.Element => {
@@ -128,11 +158,19 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
 };
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
+
   const renderContent = (content: any) => {
+    if (!content) return null;
+
     if (Array.isArray(content)) {
       return content.map((block, index) => {
         if (block.type === 'text') {
-          return <div key={index}>{block.text}</div>;
+          return (
+            <div key={index}>
+              {truncateContent(block.text, () => setSelectedContent(block.text))}
+            </div>
+          );
         } else if (block.type === 'image_url') {
           return (
             <div key={index} className="mt-2 p-2 bg-gray-100 rounded text-gray-600 text-sm">
@@ -143,16 +181,29 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           return <ObjectDisplay key={index} data={block} />;
         }
       });
+    } else if (typeof content === 'string') {
+      return (
+        <div>
+          {truncateContent(content, () => setSelectedContent(content))}
+        </div>
+      );
     } else if (typeof content === 'object' && content !== null) {
       return <ObjectDisplay data={content} />;
     }
-    return content;
+    return null;
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
+      {selectedContent && (
+        <FullMessagePopup
+          content={selectedContent}
+          onClose={() => setSelectedContent(null)}
+        />
+      )}
+      
       <div className="space-y-2">
-        {run.messages.map((msg, msgIndex) => {
+        {run.messages?.map((msg, msgIndex) => {
           const messageToolCalls = msg.role === 'assistant' && msg.tool_calls 
             ? msg.tool_calls.map((toolCall, index) => ({ toolCall, index }))
             : [];
@@ -209,19 +260,22 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                 </div>
               ))}
 
-              {msgIndex === run.messages.length - 1 && !messageToolCalls.length && run.response_texts && (
-                run.response_texts.map((responseText, index) => (
-                  <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
-                    <div className="flex items-center gap-2">
-                      <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                      <span className="text-xs text-primary-600">Response [{index}]</span>
-                    </div>
-                    <div className="text-sm whitespace-pre-wrap overflow-x-auto mt-2">
-                      {responseText}
-                    </div>
+              {msgIndex === run.messages.length - 1 && !messageToolCalls.length && run.response_texts?.map((responseText, index) => (
+                <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
+                  <div className="flex items-center gap-2">
+                    <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                    <span className="text-xs text-primary-600">Response [{index}]</span>
                   </div>
-                ))
-              )}
+                  <div 
+                    className={`text-sm whitespace-pre-wrap overflow-x-auto mt-2 ${
+                      responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
+                    }`}
+                    onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
+                  >
+                    {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
+                  </div>
+                </div>
+              ))}
             </React.Fragment>
           );
         })}

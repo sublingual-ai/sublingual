@@ -97,6 +97,32 @@ def get_available_logs():
     return jsonify([f[0] for f in files_with_time])
 
 
+@app.route("/rename_log", methods=["POST"])
+def rename_log():
+    data = request.json
+    old_path = data.get("old_path")
+    new_name = data.get("new_name")
+
+    if not old_path or not new_name:
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    try:
+        # Get the directory and old filename
+        directory = os.path.dirname(old_path)
+        # Create new path with the new name
+        new_path = os.path.join(directory, f"{new_name}.jsonl")
+
+        # Check if new filename already exists
+        if os.path.exists(new_path):
+            return jsonify({"error": "A file with this name already exists"}), 400
+
+        # Rename the file
+        os.rename(old_path, new_path)
+        return jsonify({"success": True, "new_path": new_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run the Flask server with custom options."

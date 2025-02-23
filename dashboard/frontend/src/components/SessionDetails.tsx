@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, Tag, Code } from "lucide-react";
+import { ChevronDown, ChevronUp, Tag, Code, ChevronRight } from "lucide-react";
 import { Message, StackInfo, LLMRun } from "@/types/logs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { LLMInteraction } from "@/components/LLMInteraction";
@@ -11,8 +11,8 @@ interface SessionDetailsProps {
 }
 
 interface ExpandedState {
-  messages: boolean;
   code: boolean;
+  content: boolean;
 }
 
 const truncateText = (text: string) => {
@@ -32,28 +32,24 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
   const [expandedStates, setExpandedStates] = useState<Record<number, ExpandedState>>({});
   const [fullTextContent, setFullTextContent] = useState<string | null>(null);
 
-  const toggleMessages = (index: number) => {
-    setExpandedStates(prev => ({
-      ...prev,
-      [index]: {
-        messages: !(prev[index]?.messages ?? false),
-        code: prev[index]?.code ?? false
-      }
-    }));
-  };
-
   const toggleCode = (index: number) => {
     setExpandedStates(prev => ({
       ...prev,
       [index]: {
-        messages: prev[index]?.messages ?? false,
-        code: !(prev[index]?.code ?? false)
+        ...prev[index],
+        code: !(prev[index]?.code ?? false),
       }
     }));
   };
 
-  const toggleContent = (text: string) => {
-    setFullTextContent(text);
+  const toggleCollapse = (index: number) => {
+    setExpandedStates(prev => ({
+      ...prev,
+      [index]: {
+        ...prev[index],
+        content: !(prev[index]?.content ?? true),
+      }
+    }));
   };
 
   const getStackInfo = (run: LLMRun) => {
@@ -62,7 +58,7 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
       return {
         filename: run.stack_trace[0].filename,
         lineno: run.stack_trace[0].lineno,
-        frames: run.stack_trace.reverse() // Reverse to show root caller first
+        frames: [...run.stack_trace].reverse() // Create a new array before reversing
       };
     } else if (run.stack_info) {
       return {
@@ -87,6 +83,7 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
     <div className="space-y-4 p-4">
       {runs.map((run, index) => {
         const stackInfo = getStackInfo(run);
+        const isExpanded = expandedStates[index]?.content ?? true;
 
         return (
           <div
@@ -98,71 +95,76 @@ export const SessionDetails = ({ runs }: SessionDetailsProps) => {
 
             <div className="space-y-2">
               {/* Location and buttons */}
-              <div className="flex items-center justify-between">
+              <div 
+                className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-2 rounded-md"
+                onClick={() => toggleCollapse(index)}
+              >
                 <div className="flex items-center space-x-2">
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
                   <div className="text-sm font-medium text-gray-700 flex items-center">
                     <Tag className="w-4 h-4 mr-1" />
                     {stackInfo.frames[stackInfo.frames.length - 1]?.filename}:
                     {stackInfo.frames[stackInfo.frames.length - 1]?.lineno}
                   </div>
                   <button
-                    onClick={() => toggleCode(index)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCode(index);
+                    }}
                     className={`p-1 rounded hover:bg-gray-100 ${expandedStates[index]?.code ? 'text-primary-600' : 'text-gray-400'}`}
                     title="View call stack"
                   >
                     <Code className="w-4 h-4" />
                   </button>
                 </div>
-                <button
-                  onClick={() => toggleMessages(index)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  {expandedStates[index]?.messages ? (
-                    <ChevronUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
-                </button>
               </div>
 
-              <div className="mt-2">
-                <LLMHeader run={run} />
-              </div>
+              {isExpanded && (
+                <>
+                  <div className="mt-2">
+                    <LLMHeader run={run} />
+                  </div>
 
-              {/* Stack trace (if expanded) */}
-              {expandedStates[index]?.code && (
-                <div className="text-xs text-gray-500 space-y-1 bg-gray-50 p-2 rounded-md mb-2">
-                  <div className="font-medium mb-2 text-gray-700">Call Stack:</div>
-                  {stackInfo.frames.map((frame, frameIndex) => (
-                    <div
-                      key={frameIndex}
-                      className={`mb-4 last:mb-0 pl-4 ${frameIndex > 0 ? 'border-l-2 border-gray-200' : ''}`}
-                    >
-                      <div className="flex items-center space-x-2 mb-1">
-                        <div className="w-2 h-2 rounded-full bg-gray-300" />
-                        <div className="font-medium text-gray-600">
-                          {frame.function} in {frame.filename}:{frame.lineno}
-                        </div>
-                      </div>
-                      <div className="font-mono whitespace-pre overflow-x-auto border border-gray-200 rounded bg-white p-2 ml-4">
-                        {frame.code_context.map((line, i) => (
-                          <div
-                            key={i}
-                            className={i === Math.floor(frame.code_context.length / 2) ? 'bg-green-100' : ''}
-                          >
-                            {line}
+                  {/* Stack trace (if expanded) */}
+                  {expandedStates[index]?.code && (
+                    <div className="text-xs text-gray-500 space-y-1 bg-gray-50 p-2 rounded-md mb-2">
+                      <div className="font-medium mb-2 text-gray-700">Call Stack:</div>
+                      {stackInfo.frames.map((frame, frameIndex) => (
+                        <div
+                          key={frameIndex}
+                          className={`mb-4 last:mb-0 pl-4 ${frameIndex > 0 ? 'border-l-2 border-gray-200' : ''}`}
+                        >
+                          <div className="flex items-center space-x-2 mb-1">
+                            <div className="w-2 h-2 rounded-full bg-gray-300" />
+                            <div className="font-medium text-gray-600">
+                              {frame.function} in {frame.filename}:{frame.lineno}
+                            </div>
                           </div>
-                        ))}
-                      </div>
+                          <div className="font-mono whitespace-pre overflow-x-auto border border-gray-200 rounded bg-white p-2 ml-4">
+                            {frame.code_context.map((line, i) => (
+                              <div
+                                key={i}
+                                className={i === Math.floor(frame.code_context.length / 2) ? 'bg-green-100' : ''}
+                              >
+                                {line}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )}
 
-              {/* Messages (collapsed or expanded) */}
-              <div className="space-y-2">
-                <LLMInteraction run={run} />
-              </div>
+                  {/* Messages (collapsed or expanded) */}
+                  <div className="space-y-2">
+                    <LLMInteraction run={run} />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         );

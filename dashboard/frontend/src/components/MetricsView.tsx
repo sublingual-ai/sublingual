@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { LLMRun } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronDown, ChevronUp, Minus, Calculator, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Minus, Calculator, Loader2, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
     Select,
@@ -387,9 +387,9 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                         <div className="flex-1">
                                             <div className="flex items-center space-x-2">
                                                 {isExpanded ? (
-                                                    <ChevronUp className="w-4 h-4 text-gray-500" />
-                                                ) : (
                                                     <ChevronDown className="w-4 h-4 text-gray-500" />
+                                                ) : (
+                                                    <ChevronRight className="w-4 h-4 text-gray-500" />
                                                 )}
                                                 <h3 className="text-sm font-medium text-gray-900 line-clamp-1">
                                                     {run.stack_info?.caller_function_name || 'Unknown Caller'}

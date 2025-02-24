@@ -1,4 +1,4 @@
-interface GrammarNode {
+export interface GrammarNode {
   type: 'Format' | 'Literal' | 'Var' | 'InferredVar' | 'Concat';
   value?: string | null;
   name?: string;

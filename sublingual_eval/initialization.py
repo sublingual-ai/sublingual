@@ -1,3 +1,5 @@
+from textwrap import dedent
+
 # Import our logging setup functions
 from sublingual_eval.openai_logger import (
     setup_openai_logging,
@@ -13,8 +15,17 @@ import os
 import sysconfig
 
 
+PTH_TEXT = dedent(
+    """
+    try:
+        import sublingual_eval.site_customize
+    except Exception as e:
+        pass
+    """
+).strip()
+
+### THIS IS NOT USED ANYMORE, ONLY USED TO MANUALLY WRITE .PTH AT RUN TIME
 def handle_pth():
-    PTH_TEXT = "import sublingual_eval.site_customize"
     python_dir = sysconfig.get_path("purelib")
     pth_file = os.path.join(python_dir, "sublingual_eval.pth")
     try:
@@ -32,17 +43,19 @@ def handle_pth():
         print(f"\033[96m└─\033[0m Error: {str(e)}")
 
 
+
+
 def create_subl_logs_dir():
     if not os.path.exists("subl_logs"):
         os.makedirs("subl_logs")
 
+
 def init():
     """Initialize all logging functionality"""
-
     # Create the sublingual logs directory
     if (
-        os.getenv("SUBL_PATCH_OPENAI", "0") == "1" 
-        or os.getenv("SUBL_PATCH_FASTAPI", "0") == "1" 
+        os.getenv("SUBL_PATCH_OPENAI", "0") == "1"
+        or os.getenv("SUBL_PATCH_FASTAPI", "0") == "1"
         or os.getenv("SUBL_PATCH_DJANGO", "0") == "1"
         or os.getenv("SUBL_PATCH_FLASK", "0") == "1"
     ):
@@ -52,7 +65,7 @@ def init():
         if not os.path.exists(subl_logs_path):
             os.makedirs(subl_logs_path)
         print("\033[92m\033[94m[sublingual]\033[0m Logging enabled \033[92m✔\033[0m")
-    
+
     # Setup logging
     if os.getenv("SUBL_PATCH_OPENAI", "0") == "1":
         setup_openai_logging(subl_logs_path)
@@ -65,4 +78,3 @@ def init():
     if os.getenv("SUBL_PATCH_FLASK", "0") == "1":
         os.environ["FLASK_RUN_FROM_RELOADER"] = "false"
         setup_flask_logging()
-    

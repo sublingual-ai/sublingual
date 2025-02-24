@@ -21,8 +21,13 @@ def main():
         parser.add_argument(
             "-v", "--verbose", action="store_true", help="Show Flask server output"
         )
+        parser.add_argument(
+            "--flask-port",
+            type=int,
+            default=5360,
+            help="Port for the Flask server",
+        )
         args = parser.parse_args()
-        args.flask_port = 5360 # Hardcode until we have a way for react to get this
         server_main(args)
     else:
         # Handle script execution - let wrapper_main handle the args

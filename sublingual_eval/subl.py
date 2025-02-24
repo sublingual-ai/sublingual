@@ -13,26 +13,16 @@ def main():
         # Handle server command
         parser.add_argument("command", help="Command to run (server)")
         parser.add_argument(
-            "--log-dir", help="Directory containing the log files (e.g., subl_logs)",
+            "--log-dir",
+            help="Directory containing the log files (e.g., subl_logs)",
             default=os.path.join(os.getcwd(), ".sublingual", "logs"),
             type=str,
-        )
-        parser.add_argument(
-            "--flask-port",
-            type=int,
-            default=5360,
-            help="Port for the Flask server (default: 5360)",
-        )
-        parser.add_argument(
-            "--react-port",
-            type=int,
-            default=5361,
-            help="Port for the React server (default: 5361)",
         )
         parser.add_argument(
             "-v", "--verbose", action="store_true", help="Show Flask server output"
         )
         args = parser.parse_args()
+        args.flask_port = 5360 # Hardcode until we have a way for react to get this
         server_main(args)
     else:
         # Handle script execution - let wrapper_main handle the args

@@ -8,7 +8,11 @@ from datetime import datetime
 from openai.resources.chat import chat
 import contextvars
 import uuid
-from sublingual_eval.abstract.grammar import process_messages, get_arg_node, convert_grammar_to_dict
+from sublingual_eval.abstract.grammar import (
+    process_messages,
+    get_arg_node,
+    convert_grammar_to_dict,
+)
 
 # Set up logging
 logger = logging.getLogger("sublingual")
@@ -16,12 +20,14 @@ logger = logging.getLogger("sublingual")
 # Context variable for request tracking
 request_id_ctx_var = contextvars.ContextVar("request_id", default=None)
 
+
 # Add this at the top with other imports
 class GrammarEncoder(json.JSONEncoder):
     def default(self, obj):
-        if hasattr(obj, '__json__'):
+        if hasattr(obj, "__json__"):
             return obj.__json__()
         return super().default(obj)
+
 
 output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
 
@@ -36,7 +42,7 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
     # Get the full stack trace
     stack = inspect.stack()
     stack_info = []
-    
+
     project_root = os.getcwd()
     for frame_info in reversed(stack):
         filename = frame_info.filename
@@ -46,12 +52,14 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
             continue
 
         code_context = frame_info.code_context if frame_info.code_context else []
-        stack_info.append({
-            "filename": frame_info.filename,
-            "lineno": frame_info.lineno,
-            "code_context": code_context,
-            "function": frame_info.function,
-        })
+        stack_info.append(
+            {
+                "filename": frame_info.filename,
+                "lineno": frame_info.lineno,
+                "code_context": code_context,
+                "function": frame_info.function,
+            }
+        )
 
     # Process messages to handle base64 images
     messages = kwargs.get("messages", [])
@@ -60,7 +68,7 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
         if isinstance(msg, dict):
             processed_msg = msg.copy()
             content = msg.get("content")
-            
+
             # Handle list-type content (multimodal messages)
             if isinstance(content, list):
                 processed_content = []
@@ -75,7 +83,7 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
                     else:
                         processed_content.append(item)
                 processed_msg["content"] = processed_content
-            
+
             processed_messages.append(processed_msg)
         else:
             processed_messages.append(msg)
@@ -85,7 +93,7 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
     for choice in response_dict.get("choices", []):
         message = choice.get("message", {})
         content = message.get("content")
-        
+
         if isinstance(content, list):
             processed_content = []
             for item in content:
@@ -99,7 +107,10 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
                 else:
                     processed_content.append(item)
             message["content"] = processed_content
-    
+    print("kwargs:")
+    for key, value in kwargs.items():
+        print(f"{key}: {value}")
+    print("\n")
     return {
         "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),
@@ -111,18 +122,20 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
         "timestamp": int(time.time()),
         "stack_trace": stack_info,
         "call_parameters": {
-            "model": kwargs.get("model", ""),
-            "temperature": kwargs.get("temperature", 0),
-            "max_tokens": kwargs.get("max_tokens", 0),
-            "top_p": kwargs.get("top_p", 0),
-            "frequency_penalty": kwargs.get("frequency_penalty", 0),
-            "presence_penalty": kwargs.get("presence_penalty", 0),
-            "stop": kwargs.get("stop", []),
+            "model": kwargs.get("model"),
+            "temperature": kwargs.get("temperature"),
+            "max_tokens": kwargs.get("max_tokens"),
+            "top_p": kwargs.get("top_p"),
+            "frequency_penalty": kwargs.get("frequency_penalty"),
+            "presence_penalty": kwargs.get("presence_penalty"),
+            "stop": kwargs.get("stop"),
+            "n": kwargs.get("n", 1),
         },
         "extra_info": {
             **kwargs.get("extra_headers", {}),
         },
     }
+
 
 def setup_openai_logging(subl_logs_path: str):
     """Set up synchronous logging for OpenAI completions"""
@@ -134,15 +147,21 @@ def setup_openai_logging(subl_logs_path: str):
 
         try:
             caller_frame = inspect.currentframe().f_back
-            arg_node, env = get_arg_node(caller_frame, original_completions_create.__name__)
-            grammar_result = process_messages(arg_node, env, f_locals=caller_frame.f_locals)
+            arg_node, env = get_arg_node(
+                caller_frame, original_completions_create.__name__
+            )
+            grammar_result = process_messages(
+                arg_node, env, f_locals=caller_frame.f_locals
+            )
             grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
             logger.error("Error processing grammar: %s", e)
             grammar_dict = None
 
         try:
-            logged_data = create_logged_data(result, args, kwargs, caller_frame, grammar_dict)
+            logged_data = create_logged_data(
+                result, args, kwargs, caller_frame, grammar_dict
+            )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_create: %s", e)
@@ -151,6 +170,7 @@ def setup_openai_logging(subl_logs_path: str):
 
     chat.Completions.create = logged_completions_create
 
+
 def setup_openai_async_logging(subl_logs_path: str):
     """Set up asynchronous logging for OpenAI completions"""
     original_acreate = chat.AsyncCompletions.create
@@ -158,7 +178,7 @@ def setup_openai_async_logging(subl_logs_path: str):
     @functools.wraps(original_acreate)
     async def logged_completions_acreate(self, *args, **kwargs):
         result = await original_acreate(self, *args, **kwargs)
-        
+
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, "create")
             grammar_result = process_messages(arg_node, env)
@@ -166,10 +186,12 @@ def setup_openai_async_logging(subl_logs_path: str):
         except Exception as e:
             logger.error("Error processing grammar: %s", e)
             grammar_dict = None
-        
+
         try:
             caller_frame = inspect.currentframe().f_back
-            logged_data = create_logged_data(result, args, kwargs, caller_frame, grammar_dict)
+            logged_data = create_logged_data(
+                result, args, kwargs, caller_frame, grammar_dict
+            )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_acreate: %s", e)

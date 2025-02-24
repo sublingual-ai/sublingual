@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { createHash } from 'crypto';
 import { RunsFilter } from "@/components/RunsFilter";
+import { useToast } from "@/components/ui/use-toast";
 
 interface MetricsViewProps {
     runs: LLMRun[];
@@ -159,6 +160,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
     const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
     const [loadingStates, setLoadingStates] = useState<LoadingState>({});
     const [filters, setFilters] = useState<Filter[]>([]);
+    const { toast } = useToast();
 
     // Get filtered runs based on filters
     const filteredRuns = useMemo(() => {
@@ -238,6 +240,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
             });
 
             if (!response.ok) {
+                if (response.status === 503) {
+                    console.error("OpenAI Client Error");
+                    toast({
+                        variant: "destructive",
+                        title: "OpenAI Client Error",
+                        description: "Failed to initialize OpenAI client. Please ensure you have provided your API key in the .env file.",
+                    });
+                }
                 throw new Error('Evaluation request failed');
             }
 

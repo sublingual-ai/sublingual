@@ -31,7 +31,6 @@ def evaluate():
 
     results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
-        print(criteria)
         if "correctness" in criteria:
             results["correctness"] = correctness(
                 run_data["messages"], run_data["response"]

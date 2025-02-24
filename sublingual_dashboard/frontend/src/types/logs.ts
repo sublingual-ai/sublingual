@@ -125,4 +125,12 @@ export interface FilterOption {
   label: string;
   values: any[];
   type: 'select' | 'number' | 'boolean' | 'multiselect';
+}
+
+export interface Token {
+  type: 'literal' | 'variable' | 'inferred' | 'concat';
+  value: string | null;
+  name?: string;
+  parts?: Token[];
+  kwargs?: Record<string, Token>;
 } 

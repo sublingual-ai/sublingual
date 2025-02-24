@@ -1,101 +1,73 @@
-interface Token {
-  type: 'literal' | 'variable' | 'inferred' | 'concat';
-  value: string | null;
+interface GrammarNode {
+  type: 'Format' | 'Literal' | 'Var' | 'InferredVar' | 'Concat';
+  value?: string | null;
   name?: string;
-  parts?: Token[];  // For concat tokens
-  kwargs?: Record<string, Token>;  // For format kwargs
+  base?: GrammarNode;
+  args?: GrammarNode[];
+  parts?: GrammarNode[];
+  kwargs?: Record<string, GrammarNode>;
 }
 
-export function parseGrammarFormat(format: any): Token[] {
-  // Handle Concat type
+export function parseGrammarFormat(format: any): GrammarNode {
   if (format.type === 'Concat') {
-    return [{
-      type: 'concat',
-      value: null,
-      parts: format.parts.flatMap(part => parseGrammarFormat(part))
-    }];
+    return {
+      type: 'Concat',
+      parts: format.parts.map(part => parseGrammarFormat(part))
+    };
   }
 
-  // Handle regular Var type
   if (format.type === 'Var') {
-    return [{
-      type: 'variable',
+    return {
+      type: 'Var',
       value: format.name,
       name: format.name
-    }];
+    };
   }
 
-  // Handle InferredVar type
   if (format.type === 'InferredVar') {
-    return [{
-      type: 'inferred',
+    return {
+      type: 'InferredVar',
       value: format.value,
       name: format.name
-    }];
+    };
   }
 
-  // Handle simple literals
   if (format.type === 'Literal') {
-    return [{
-      type: 'literal',
+    return {
+      type: 'Literal',
       value: format.value
-    }];
+    };
   }
   
   if (format.type === 'Format') {
-    const tokens: Token[] = [];
-    
-    // Split the base template into parts using {} as delimiter
-    const parts = format.base.value.split(/(\{\})/);
-    
-    let argIndex = 0;
-    
-    parts.forEach(part => {
-      if (part === '{}') {
-        // This is a placeholder - fill with the corresponding arg
-        if (format.args && format.args[argIndex]) {
-          tokens.push(...parseGrammarFormat(format.args[argIndex]));
-        }
-        argIndex++;
-      } else if (part) {
-        // This is a literal part of the template
-        tokens.push({
-          type: 'literal',
-          value: part
-        });
-      }
-    });
-
-    // Handle kwargs if present
-    if (format.kwargs && Object.keys(format.kwargs).length > 0) {
-      const kwargTokens: Record<string, Token> = {};
-      for (const [key, value] of Object.entries(format.kwargs)) {
-        const parsedTokens = parseGrammarFormat(value);
-        if (parsedTokens.length > 0) {
-          kwargTokens[key] = parsedTokens[0];
-        }
-      }
-      if (Object.keys(kwargTokens).length > 0) {
-        tokens[0].kwargs = kwargTokens;  // Attach kwargs to first token
-      }
-    }
-    
-    return tokens;
+    return {
+      type: 'Format',
+      base: parseGrammarFormat(format.base),
+      args: format.args?.map(arg => parseGrammarFormat(arg)) || [],
+      kwargs: Object.fromEntries(
+        Object.entries(format.kwargs || {}).map(
+          ([k, v]) => [k, parseGrammarFormat(v)]
+        )
+      )
+    };
   }
   
-  return [];
+  return {
+    type: 'Literal',
+    value: '<unknown>'
+  };
 }
 
-export function reconstructString(tokens: Token[]): string {
+export function reconstructString(tokens: GrammarNode[]): string {
   return tokens.map(token => {
-    if (token.type === 'concat' && token.parts) {
+    if (token.type === 'Concat' && token.parts) {
       return reconstructString(token.parts);
     }
     return token.value ?? '';
   }).join('');
 }
 
-export function validateParsing(original: string | null, tokens: Token[]) {
+export function validateParsing(original: string | null, tokens: GrammarNode[]) {
   const reconstructed = reconstructString(tokens);
   return {
     valid: reconstructed === original,

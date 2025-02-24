@@ -466,7 +466,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                     {/* Evaluation Controls Box */}
                     <div className="flex-none">
                         {selectedCriteria.length > 0 ? (
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-100 animate-fade-in">
                                 <div className="p-4">
                                     <div>
                                         <label className="text-sm font-medium text-gray-700 mb-2 block">
@@ -508,7 +508,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-fade-in">
                                 <label className="text-sm font-medium text-gray-700 mb-2 block">
                                     Evaluation Criteria
                                 </label>
@@ -529,7 +529,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                     </div>
 
                     {/* Main Runs List Box */}
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0">
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
                         <div className="border-b border-gray-200 p-4 flex-none">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>

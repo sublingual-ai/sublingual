@@ -8,6 +8,7 @@ import psutil
 import socket
 import itertools
 import threading
+import webbrowser
 
 
 def is_port_in_use(port):
@@ -125,23 +126,38 @@ class Spinner:
             self.spin_thread.join()
 
 
-def start_flask(flask_dir, port="5360", log_dir="logs", verbose=False):
+def start_flask(
+    flask_dir,
+    port="5360",
+    log_dir="logs",
+    verbose=False,
+    debug=False,
+    env_path=".env",
+):
     # Use absolute path from current working directory
     abs_log_dir = os.path.abspath(log_dir)
 
     # Start the Flask server using app.py with custom arguments
     with Spinner(f"Starting Flask server...", is_last=True):
+        commands = [
+            "python",
+            os.path.join(flask_dir, "app.py"),
+            "--port",
+            str(port),
+            "--log-dir",
+            abs_log_dir,
+            "--env",
+            env_path,
+        ]
+        if debug:
+            commands.append("--debug")
+        if verbose:
+            commands.append("--verbose")
+
         proc = subprocess.Popen(
-            [
-                "python",
-                os.path.join(flask_dir, "app.py"),
-                "--port",
-                str(port),
-                "--log-dir",
-                abs_log_dir,
-            ],
-            stdout=sys.stdout if verbose else subprocess.DEVNULL,
-            stderr=sys.stderr if verbose else subprocess.DEVNULL,
+            commands,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
         )
         # Give it a moment to start
         time.sleep(2)
@@ -163,9 +179,10 @@ def print_startup_message(flask_port, log_dir):
         else "..." + log_dir[-(max_path_length - 3) :]
     )
 
+    server_url = f"http://localhost:{flask_port}"
     messages = [
         "🚀 Server started successfully!",
-        f"🌐 View dashboard at: {YELLOW}http://localhost:{flask_port}{RESET}",
+        f"🌐 View dashboard at: {YELLOW}{server_url}{RESET}",
         f"📁 Logs: {YELLOW}{truncated_log_dir}{RESET}",
         f"💡 {GREEN}Press Ctrl+C to stop the server{RESET}",
     ]
@@ -197,6 +214,7 @@ def print_startup_message(flask_port, log_dir):
         print(f"║ {msg}{padding} ║")
     print(f"╚{'═' * width}╝")
     print()
+    webbrowser.open(server_url)
 
 
 def main(args):
@@ -207,7 +225,7 @@ def main(args):
         sys.exit(1)
 
     # Check and handle any port conflicts before starting server
-    check_ports_and_kill_processes(args.flask_port)
+    check_ports_and_kill_processes(args.port)
 
     # Define paths to Flask app directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -215,7 +233,12 @@ def main(args):
 
     # Start Flask server
     flask_proc = start_flask(
-        flask_dir, port=args.flask_port, log_dir=args.log_dir, verbose=args.verbose
+        flask_dir,
+        port=args.port,
+        log_dir=args.log_dir,
+        verbose=args.verbose,
+        debug=args.flask_debug,
+        env_path=args.env,
     )
 
     # Give server a moment to start and check if it's still running
@@ -227,8 +250,7 @@ def main(args):
         sys.exit(1)
 
     # Print the nice formatted message if not in verbose mode
-    if not args.verbose:
-        print_startup_message(args.flask_port, abs_log_dir)
+    print_startup_message(args.port, abs_log_dir)
 
     def shutdown(sig, frame):
         print("\nShutting down server...")

@@ -13,6 +13,7 @@ from evaluations.simple_evaluations import (
     initialize_client,
 )
 import config
+import logging
 
 app = Flask(__name__)
 CORS(app)
@@ -48,18 +49,30 @@ if __name__ == "__main__":
         help="Directory to load .jsonl log files from",
     )
     parser.add_argument(
-        "--env-file",
+        "--env",
         type=str,
-        default="keys.env",
+        default=".env",
         help="Path to the environment file containing the OpenAI API key",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Run the Flask server in debug mode",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Run the Flask server in verbose mode",
+    )
     args = parser.parse_args()
-
     # Use the absolute path as provided
     config.set_log_dir(args.log_dir)
-    print(f"Log directory: {config.log_dir}")
 
     # Initialize the OpenAI client
-    initialize_client(args.env_file)
+    initialize_client(args.env)
 
-    app.run(debug=True, host="0.0.0.0", port=args.port)
+    # If not verbose, disable Flask's logging
+    if not args.verbose:
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+    app.run(debug=args.debug, host="0.0.0.0", port=args.port)

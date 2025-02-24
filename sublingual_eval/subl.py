@@ -22,10 +22,23 @@ def main():
             "-v", "--verbose", action="store_true", help="Show Flask server output"
         )
         parser.add_argument(
-            "--flask-port",
+            "--port",
+            "-p",
             type=int,
             default=5360,
             help="Port for the Flask server",
+        )
+        parser.add_argument(
+            "--flask-debug",
+            action="store_true",
+            help="Run the Flask server in debug mode",
+        )
+        parser.add_argument(
+            "--env",
+            "-e",
+            type=str,
+            default=".env",
+            help="Path to the environment file containing the OpenAI API key",
         )
         args = parser.parse_args()
         server_main(args)

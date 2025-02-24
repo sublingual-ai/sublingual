@@ -14,9 +14,11 @@ def initialize_client(env_file):
     if api_key:
         client = OpenAI(api_key=api_key)
     else:
-        RED = '\033[91m'
-        RESET = '\033[0m'
-        print(f"{RED}❌ No OpenAI API key found in environment file: {env_file}{RESET}")
+        RED = "\033[91m"
+        RESET = "\033[0m"
+        print(
+            f"\n{RED}❌ No OpenAI API key found in environment file: {env_file}\nEvaluations will not work.{RESET}\n"
+        )
         return None
 
 

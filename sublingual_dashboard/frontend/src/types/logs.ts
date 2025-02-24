@@ -38,11 +38,31 @@ export interface Choice {
   };
 }
 
+export interface GrammarFormat {
+  type: 'Format' | 'Literal';
+  base?: {
+    type: 'Literal';
+    value: string;
+  };
+  args?: {
+    type: 'Literal';
+    value: string;
+  }[];
+  kwargs?: Record<string, any>;
+  value?: string;
+}
+
+export interface GrammarResult {
+  role: string;
+  content: GrammarFormat;
+}
+
 export interface LLMRun {
   session_id: string;
   messages: Message[];
   response_texts: string[];
   symbolic_mappings: any[];
+  grammar_result?: GrammarResult[];
   response: {
     model: string;
     usage: {
@@ -105,4 +125,12 @@ export interface FilterOption {
   label: string;
   values: any[];
   type: 'select' | 'number' | 'boolean' | 'multiselect';
+}
+
+export interface Token {
+  type: 'literal' | 'variable' | 'inferred' | 'concat';
+  value: string | null;
+  name?: string;
+  parts?: Token[];
+  kwargs?: Record<string, Token>;
 } 

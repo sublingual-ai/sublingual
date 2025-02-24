@@ -1,8 +1,10 @@
 import { Badge } from "@/components/ui/badge";
-import { Bot, User, Wrench, Calculator, Search, Database } from "lucide-react";
+import { Bot, User, Wrench, Calculator, Search, Database, Code2 } from "lucide-react";
 import { Message, LLMRun, ToolCall } from "@/types/logs";
 import React, { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { parseGrammarFormat, validateParsing, parseGrammarResult } from "@/utils/grammarParser";
 
 interface LLMInteractionProps {
   run: LLMRun;
@@ -160,6 +162,24 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
 export function LLMInteraction({ run }: LLMInteractionProps) {
   const [selectedContent, setSelectedContent] = useState<string | null>(null);
 
+  const handleShowGrammar = (msgIndex: number) => {
+    if (run.grammar_result?.[msgIndex]) {
+      const grammarResult = run.grammar_result[msgIndex];
+      const originalMessage = run.messages[msgIndex].content;
+      
+      if (originalMessage && grammarResult.content) {
+        const tokens = parseGrammarFormat(grammarResult.content);
+        const validation = validateParsing(originalMessage, tokens);
+        
+        console.log('Grammar Analysis:', {
+          grammarResult,
+          tokens,
+          validation
+        });
+      }
+    }
+  };
+
   const renderContent = (content: any) => {
     if (!content) return null;
 
@@ -213,39 +233,53 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
               <div className={`flex flex-col p-3 rounded-lg ${
                 msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
               }`}>
-                <div className="flex items-center gap-2">
-                  {msg.role === 'assistant' ? (
-                    <>
-                      <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                      <span className="text-xs text-primary-600">Assistant</span>
-                    </>
-                  ) : msg.role === 'system' ? (
-                    <>
-                      <Wrench size={16} className="text-gray-600 flex-shrink-0" />
-                      <span className="text-xs text-gray-600">System</span>
-                    </>
-                  ) : msg.role === 'tool' ? (
-                    <>
-                      <Wrench size={16} className="text-blue-600 flex-shrink-0" />
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-600">Tool</span>
-                        {msg.tool_call_id && (
-                          <Badge variant="outline" className="text-xs">
-                            ID: {msg.tool_call_id}
-                          </Badge>
-                        )}
-                      </div>
-                    </>
-                  ) : msg.role === 'user' ? (
-                    <>
-                      <User size={16} className="text-gray-600 flex-shrink-0" />
-                      <span className="text-xs text-gray-600">User</span>
-                    </>
-                  ) : (
-                    <>
-                      <User size={16} className="text-gray-600 flex-shrink-0" />
-                      <span className="text-xs text-gray-600">{msg.role}</span>
-                    </>
+                <div className="flex items-center gap-2 justify-between">
+                  <div className="flex items-center gap-2">
+                    {msg.role === 'assistant' ? (
+                      <>
+                        <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                        <span className="text-xs text-primary-600">Assistant</span>
+                      </>
+                    ) : msg.role === 'system' ? (
+                      <>
+                        <Wrench size={16} className="text-gray-600 flex-shrink-0" />
+                        <span className="text-xs text-gray-600">System</span>
+                      </>
+                    ) : msg.role === 'tool' ? (
+                      <>
+                        <Wrench size={16} className="text-blue-600 flex-shrink-0" />
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-blue-600">Tool</span>
+                          {msg.tool_call_id && (
+                            <Badge variant="outline" className="text-xs">
+                              ID: {msg.tool_call_id}
+                            </Badge>
+                          )}
+                        </div>
+                      </>
+                    ) : msg.role === 'user' ? (
+                      <>
+                        <User size={16} className="text-gray-600 flex-shrink-0" />
+                        <span className="text-xs text-gray-600">User</span>
+                      </>
+                    ) : (
+                      <>
+                        <User size={16} className="text-gray-600 flex-shrink-0" />
+                        <span className="text-xs text-gray-600">{msg.role}</span>
+                      </>
+                    )}
+                  </div>
+                  
+                  {run.grammar_result?.[msgIndex] && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2"
+                      onClick={() => handleShowGrammar(msgIndex)}
+                    >
+                      <Code2 size={14} className="mr-1" />
+                      <span className="text-xs">Show Grammar</span>
+                    </Button>
                   )}
                 </div>
                 <div className="text-sm whitespace-pre-wrap break-words mt-2">

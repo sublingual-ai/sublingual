@@ -30,5 +30,7 @@ setup(
         "flask",
         "flask-cors",
         "openai",
+        "dotenv",
+        "psutil",
     ],
 )

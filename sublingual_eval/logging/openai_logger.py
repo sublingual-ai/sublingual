@@ -107,10 +107,6 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
                 else:
                     processed_content.append(item)
             message["content"] = processed_content
-    print("kwargs:")
-    for key, value in kwargs.items():
-        print(f"{key}: {value}")
-    print("\n")
     return {
         "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),

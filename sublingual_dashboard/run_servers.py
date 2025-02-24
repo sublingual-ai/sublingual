@@ -126,23 +126,38 @@ class Spinner:
             self.spin_thread.join()
 
 
-def start_flask(flask_dir, port="5360", log_dir="logs", verbose=False):
+def start_flask(
+    flask_dir,
+    port="5360",
+    log_dir="logs",
+    verbose=False,
+    debug=False,
+    env_path="keys.env",
+):
     # Use absolute path from current working directory
     abs_log_dir = os.path.abspath(log_dir)
 
     # Start the Flask server using app.py with custom arguments
     with Spinner(f"Starting Flask server...", is_last=True):
+        commands = [
+            "python",
+            os.path.join(flask_dir, "app.py"),
+            "--port",
+            str(port),
+            "--log-dir",
+            abs_log_dir,
+            "--env",
+            env_path,
+        ]
+        if debug:
+            commands.append("--debug")
+        if verbose:
+            commands.append("--verbose")
+
         proc = subprocess.Popen(
-            [
-                "python",
-                os.path.join(flask_dir, "app.py"),
-                "--port",
-                str(port),
-                "--log-dir",
-                abs_log_dir,
-            ],
-            stdout=sys.stdout if verbose else subprocess.DEVNULL,
-            stderr=sys.stderr if verbose else subprocess.DEVNULL,
+            commands,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
         )
         # Give it a moment to start
         time.sleep(2)
@@ -210,7 +225,7 @@ def main(args):
         sys.exit(1)
 
     # Check and handle any port conflicts before starting server
-    check_ports_and_kill_processes(args.flask_port)
+    check_ports_and_kill_processes(args.port)
 
     # Define paths to Flask app directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -218,7 +233,12 @@ def main(args):
 
     # Start Flask server
     flask_proc = start_flask(
-        flask_dir, port=args.flask_port, log_dir=args.log_dir, verbose=args.verbose
+        flask_dir,
+        port=args.port,
+        log_dir=args.log_dir,
+        verbose=args.verbose,
+        debug=args.flask_debug,
+        env_path=args.env,
     )
 
     # Give server a moment to start and check if it's still running
@@ -230,8 +250,7 @@ def main(args):
         sys.exit(1)
 
     # Print the nice formatted message if not in verbose mode
-    if not args.verbose:
-        print_startup_message(args.flask_port, abs_log_dir)
+    print_startup_message(args.port, abs_log_dir)
 
     def shutdown(sig, frame):
         print("\nShutting down server...")

@@ -49,14 +49,12 @@ class EnvBuilder(ast.NodeVisitor):
     def __init__(self):
         self.env = {}
         self.in_control = False
-
     def generic_visit(self, node):
         old_control = self.in_control
         if isinstance(node, (ast.If, ast.For, ast.While)):
             self.in_control = True
         super().generic_visit(node)
         self.in_control = old_control
-
     def visit_Assign(self, node):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             varname = node.targets[0].id
@@ -68,86 +66,36 @@ def build_env_with_flags(tree):
     builder.visit(tree)
     return builder.env
 
-# --- Collecting Assignments for the Target Variable ---
-
-def collect_assignments(tree, var_name):
-    assignments = []
-    class AssignmentCollector(ast.NodeVisitor):
-        def __init__(self):
-            self.assignments = []
-            self.in_dynamic = False
-        def generic_visit(self, node):
-            old = self.in_dynamic
-            if isinstance(node, (ast.If, ast.For, ast.While)):
-                self.in_dynamic = True
-            super().generic_visit(node)
-            self.in_dynamic = old
-        def visit_Assign(self, node):
-            if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == var_name):
-                self.assignments.append((node.lineno, node, self.in_dynamic))
-            self.generic_visit(node)
-    collector = AssignmentCollector()
-    collector.visit(tree)
-    return sorted(collector.assignments, key=lambda x: x[0])
-
-# --- Sequential Simulation of the Assignment Chain ---
-# We first determine the last dynamic assignment (if any) and then simulate only the assignments that follow.
-def simulate_chain(var_name, assignments, env):
-    last_dynamic_line = None
-    for lineno, _, dyn in assignments:
-        if dyn:
-            last_dynamic_line = lineno
-    if last_dynamic_line is not None:
-        static_assignments = [a for a in assignments if a[0] > last_dynamic_line]
-    else:
-        static_assignments = assignments
-    if not static_assignments:
-        # If no static updates occur after a dynamic update, halt propagation.
-        return Var(var_name)
-    chain = None
-    asterisk_count = 0
-    for _, node, _ in static_assignments:
-        if isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Add):
-            left = node.value.left
-            right = node.value.right
-            if isinstance(left, ast.Name) and left.id == var_name:
-                asterisk_count += 1
-                base = Var(var_name + "*" * asterisk_count)
-                if chain is None:
-                    chain = Concat(base, resolve_expr(right, env))
-                else:
-                    chain = Concat(chain, resolve_expr(right, env))
-            else:
-                chain = resolve_expr(node.value, env)
-                asterisk_count = 0
-        else:
-            chain = resolve_expr(node.value, env)
-            asterisk_count = 0
-    return chain
-
 # --- AST Processing Function (resolve_expr) ---
-# Any function call (other than .format() calls) is returned as a Var.
-def resolve_expr(node, env):
+
+def resolve_expr(node, env, _seen=None):
+    # Initialize recursion guard set
+    if _seen is None:
+        _seen = set()
+    
+    # If we're looking up a name, add it to seen set to prevent cycles
+    if isinstance(node, ast.Name):
+        if node.id in _seen:
+            return Var(node.id)  # Break the cycle
+        _seen = _seen | {node.id}
+
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
-            return Concat(resolve_expr(node.left, env), resolve_expr(node.right, env))
+            return Concat(resolve_expr(node.left, env, _seen), resolve_expr(node.right, env, _seen))
         elif isinstance(node.op, ast.Mod):
-            base = resolve_expr(node.left, env)
+            base = resolve_expr(node.left, env, _seen)
             fmt_arg = node.right
             if isinstance(fmt_arg, ast.Tuple):
-                args = tuple(resolve_expr(elt, env) for elt in fmt_arg.elts)
+                args = tuple(resolve_expr(elt, env, _seen) for elt in fmt_arg.elts)
             else:
-                args = (resolve_expr(fmt_arg, env),)
+                args = (resolve_expr(fmt_arg, env, _seen),)
             return Format(base, *args)
     elif isinstance(node, ast.Call):
-        # If it's a .format() call, handle it specially.
         if (isinstance(node.func, ast.Attribute) and node.func.attr == "format"):
-            base = resolve_expr(node.func.value, env)
-            args = tuple(resolve_expr(arg, env) for arg in node.args)
-            kwargs = {kw.arg: resolve_expr(kw.value, env) for kw in node.keywords}
+            base = resolve_expr(node.func.value, env, _seen)
+            args = tuple(resolve_expr(arg, env, _seen) for arg in node.args)
+            kwargs = {kw.arg: resolve_expr(kw.value, env, _seen) for kw in node.keywords}
             return Format(base, *args, **kwargs)
-        # For any other function call, simply return a Var.
         try:
             s = ast.unparse(node)
         except Exception:
@@ -161,7 +109,7 @@ def resolve_expr(node, env):
                 fmt_parts.append(value.value)
             elif isinstance(value, ast.FormattedValue):
                 fmt_parts.append("{}")
-                args.append(resolve_expr(value.value, env))
+                args.append(resolve_expr(value.value, env, _seen))
             else:
                 fmt_parts.append("<unknown>")
         fmt_str = "".join(fmt_parts)
@@ -176,7 +124,7 @@ def resolve_expr(node, env):
             if dynamic:
                 return Var(node.id)
             else:
-                return resolve_expr(expr, env)
+                return resolve_expr(expr, env, _seen)
         return Var(node.id)
     else:
         try:
@@ -186,7 +134,7 @@ def resolve_expr(node, env):
         return Var(s)
 
 # --- The main grammar() function ---
-
+# This version only supports a list of OpenAI message dicts.
 def grammar(var_value):
     frame = inspect.currentframe().f_back
     try:
@@ -196,90 +144,116 @@ def grammar(var_value):
     source = textwrap.dedent(source)
     tree = ast.parse(source)
     env = build_env_with_flags(tree)
-    
-    target_var = None
-    for name, (expr, _) in env.items():
-        if expr is None:
-            continue
-        try:
-            val = eval(compile(ast.Expression(expr), filename="<ast>", mode="eval"),
-                       frame.f_globals, frame.f_locals)
-        except Exception:
-            continue
-        if val == var_value:
-            target_var = name
-            break
-    if target_var is None:
-        for name in frame.f_locals:
-            if frame.f_locals[name] == var_value:
-                target_var = name
-                break
-        if target_var is None:
-            return "<could not resolve variable>"
-    
-    assignments = collect_assignments(tree, target_var)
-    if assignments:
-        return simulate_chain(target_var, assignments, env)
-    else:
-        expr, dynamic = env.get(target_var, (None, True))
-        if expr is None:
-            return Var(target_var)
-        return resolve_expr(expr, env)
 
-# --- Test Cases ---
+    # --- Robust Call Node Detection ---
+    caller_lineno = frame.f_lineno
+    class CallFinder(ast.NodeVisitor):
+        def __init__(self):
+            self.calls = []
+        def visit_Call(self, node):
+            try:
+                func_name = ast.unparse(node.func)
+            except Exception:
+                func_name = ""
+            if func_name.endswith("grammar"):
+                self.calls.append(node)
+            self.generic_visit(node)
+    finder = CallFinder()
+    finder.visit(tree)
+    candidate_calls = [call for call in finder.calls if call.lineno <= caller_lineno]
+    call_node = max(candidate_calls, key=lambda n: n.lineno) if candidate_calls else None
 
-def old_test_cases():
+    # --- Fallback: Use source context if call argument isn't a literal
+    if call_node is None or not (call_node.args and isinstance(call_node.args[0], (ast.Dict, ast.List))):
+        frame_info = inspect.getframeinfo(frame)
+        if frame_info.code_context:
+            call_source = "".join(frame_info.code_context)
+            try:
+                call_tree = ast.parse(call_source)
+                for node in ast.walk(call_tree):
+                    if isinstance(node, ast.Call):
+                        try:
+                            func_name = ast.unparse(node.func)
+                        except Exception:
+                            func_name = ""
+                        if func_name.endswith("grammar"):
+                            call_node = node
+                            break
+            except Exception:
+                pass
+
+    # --- Process a literal list of message dicts.
+    if call_node and call_node.args:
+        arg_node = call_node.args[0]
+        if isinstance(arg_node, ast.List):
+            new_list = []
+            for elt in arg_node.elts:
+                if isinstance(elt, ast.Dict):
+                    new_dict = {}
+                    for key, value in zip(elt.keys, elt.values):
+                        try:
+                            key_val = ast.literal_eval(key)
+                        except Exception:
+                            key_val = None
+                        if key_val == "content":
+                            new_dict[key_val] = resolve_expr(value, env)
+                        else:
+                            try:
+                                new_dict[key_val] = ast.literal_eval(value)
+                            except Exception:
+                                new_dict[key_val] = Var(ast.unparse(value))
+                    new_list.append(new_dict)
+            return new_list
+
+    return "<unsupported input type>"
+
+# --- Unit Test Cases: Seven examples using variable-defined content in a literal dict ---
+
+def example1():
     # Example 1: f-string with concatenation (static assignment)
-    def example1():
-        b = "hi"
-        c = "lo"
-        d = b + c
-        e = f"i am {d}!"
-        print("Example1 grammar(e):", grammar(e))
-    example1()
+    b = "hi"
+    c = "lo"
+    d = b + c
+    e = f"i am {d}!"
+    # Passing a literal list with the variable 'e'
+    print("Example1 grammar(messages):", grammar([{"role": "user", "content": e}]))
 
-    # Example 2: parameter plus concatenation (static assignment for d)
-    def example2(a):
-        b = a + "hi"
-        c = "lo"
-        d = b + c
-        e = f"i am {d}!"
-        print("Example2 grammar(d):", grammar(d))
-    example2("greetings, ")
+def example2():
+    # Example 2: Parameter plus concatenation (simulated inline)
+    a = "greetings, "
+    b = a + "hi"
+    c = "lo"
+    d = b + c
+    e = f"i am {d}!"
+    print("Example2 grammar(messages):", grammar([{"role": "user", "content": e}]))
 
+def example3():
     # Example 3: %-formatting
-    def example3():
-        s = "Hello, %s" % "world"
-        print("Example3 grammar(s):", grammar(s))
-    example3()
+    s = "Hello, %s" % "world"
+    print("Example3 grammar(messages):", grammar([{"role": "user", "content": s}]))
 
+def example4():
     # Example 4: .format() formatting
-    def example4():
-        s = "Sum: {} + {} = {}".format(1, 2, 3)
-        print("Example4 grammar(s):", grammar(s))
-    example4()
+    s = "Sum: {} + {} = {}".format(1, 2, 3)
+    print("Example4 grammar(messages):", grammar([{"role": "user", "content": s}]))
 
-def new_test_cases():
-    # Example 5: variable updated in an if statement (dynamic update)
-    def example5():
-        x = "hello"
-        if True:
-            x = x + " world"
-        print("Example5 grammar(x):", grammar(x))
-    example5()
+def example5():
+    # Example 5: Conditional expression (dynamic update simulation)
+    x = "hello"
+    if True:
+        x = x + " world"
+    print("Example5 grammar(messages):", grammar([{"role": "user", "content": x}]))
 
-    # Example 6: variable updated in a for loop then updated outside (chain simulation)
-    def example6():
-        s = "start"
-        a = "a"
-        for i in range(2):
-            s = s + " loop"
-        s = s + "end"
-        s = s + a
-        print("Example6 grammar(s):", grammar(s))
-    example6()
+def example6():
+    # Example 6: Chain simulation (updates in a loop simulated inline)
+    s = "start"
+    for i in range(2):
+        s = s + " loop"
+    s = s + "end"
+    print("Example6 grammar(messages):", grammar([{"role": "user", "content": s}]))
 
 def example7():
+    # Example 7: File read simulation with open() (non-literal parts become Vars)
     s = "start"
     with open(".gitignore", "r") as f:
         a = f.read().split("\n")[0]
@@ -287,12 +261,14 @@ def example7():
         s = s + " loop"
     s = s + "end"
     s = s + a
-    print("Example7 grammar(s):", grammar(s))
+    print("Example7 grammar(messages):", grammar([{"role": "user", "content": s}]))
 
 if __name__ == "__main__":
-    print("=== Old Test Cases ===")
-    old_test_cases()
-    print("\n=== New Test Cases ===")
-    new_test_cases()
-    print("\n=== Example 7 ===")
+    print("=== Message Test Cases ===")
+    example1()
+    example2()
+    example3()
+    example4()
+    example5()
+    example6()
     example7()

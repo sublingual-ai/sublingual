@@ -132,5 +132,39 @@ class TestGrammar(unittest.TestCase):
         }]
         self.assertListEqual(result, expected)
 
+    def test_nested_fstrings(self):
+        """Test nested f-string parsing"""
+        inner = f"inner{42}"
+        outer = f"outer{inner}end"
+        result = grammar([{"role": "user", "content": outer}])
+        expected = [{
+            "role": "user",
+            "content": Format(
+                Literal("outer{}end"),
+                Format(
+                    Literal("inner{}"),
+                    Literal("42")
+                )
+            )
+        }]
+        self.assertListEqual(result, expected)
+
+    def test_nested_fstrings(self):
+        """Test nested f-string parsing"""
+        inner = f"inner{42}"
+        outer = f"outer{inner}end"
+        result = grammar([{"role": "user", "content": outer}])
+        expected = [{
+            "role": "user",
+            "content": Format(
+                Literal("outer{}end"),
+                Format(
+                    Literal("inner{}"),
+                    Literal("42")
+                )
+            )
+        }]
+        self.assertListEqual(result, expected)
+
 if __name__ == '__main__':
     unittest.main() 

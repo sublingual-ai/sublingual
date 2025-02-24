@@ -135,82 +135,64 @@ def resolve_expr(node, env, _seen=None):
 
 # --- The main grammar() function ---
 # This version only supports a list of OpenAI message dicts.
-def grammar(var_value):
-    frame = inspect.currentframe().f_back
-    try:
-        source = inspect.getsource(frame.f_code)
-    except Exception:
-        return "<source unavailable>"
-    source = textwrap.dedent(source)
+
+class CallFinder(ast.NodeVisitor):
+    def __init__(self, func_name):
+        self.calls = []
+        self.func_name = func_name
+    def visit_Call(self, node):
+        if ast.unparse(node.func).endswith(self.func_name):
+            self.calls.append(node)
+        self.generic_visit(node)
+
+def process_dict(dict_node, env):
+    result = {}
+    for key, value in zip(dict_node.keys, dict_node.values):
+        try:
+            key_val = ast.literal_eval(key)
+            if key_val == "content":
+                result[key_val] = resolve_expr(value, env)
+            else:
+                result[key_val] = ast.literal_eval(value)
+        except Exception:
+            continue
+    return result
+
+def process_messages(arg_node, env):
+    if isinstance(arg_node, ast.List):
+        result = [process_dict(elt, env) for elt in arg_node.elts 
+                 if isinstance(elt, ast.Dict)]
+        return result if result else "<unsupported input type>"
+    elif isinstance(arg_node, ast.Dict):
+        result = process_dict(arg_node, env)
+        return result if result else "<unsupported input type>"
+    return "<unsupported input type>"
+
+def find_call(tree, func_name, lineno):
+    finder = CallFinder(func_name)
+    finder.visit(tree)
+    return max((call for call in finder.calls if call.lineno <= lineno), 
+               key=lambda n: n.lineno, default=None)
+
+def get_arg_node(frame, func_name):
+    source = textwrap.dedent(inspect.getsource(frame.f_code))
     tree = ast.parse(source)
     env = build_env_with_flags(tree)
-
-    # --- Robust Call Node Detection ---
-    caller_lineno = frame.f_lineno
-    class CallFinder(ast.NodeVisitor):
-        def __init__(self):
-            self.calls = []
-        def visit_Call(self, node):
-            try:
-                func_name = ast.unparse(node.func)
-            except Exception:
-                func_name = ""
-            if func_name.endswith("grammar"):
-                self.calls.append(node)
-            self.generic_visit(node)
-    finder = CallFinder()
-    finder.visit(tree)
-    candidate_calls = [call for call in finder.calls if call.lineno <= caller_lineno]
-    call_node = max(candidate_calls, key=lambda n: n.lineno) if candidate_calls else None
-
-    # --- Process the argument node ---
-    if call_node and call_node.args:
-        arg_node = call_node.args[0]
+    
+    call_node = find_call(tree, func_name, frame.f_lineno)
+    if not call_node or not call_node.args:
+        return None, env
         
-        # If the argument is a variable name, try to resolve it from the environment
-        if isinstance(arg_node, ast.Name) and arg_node.id in env:
-            expr, _ = env[arg_node.id]
-            arg_node = expr
+    arg_node = call_node.args[0]
+    if isinstance(arg_node, ast.Name) and arg_node.id in env:
+        arg_node = env[arg_node.id][0]
+    return arg_node, env
 
-        # Handle list of message dicts
-        if isinstance(arg_node, ast.List):
-            new_list = []
-            for elt in arg_node.elts:
-                if isinstance(elt, ast.Dict):
-                    new_dict = {}
-                    for key, value in zip(elt.keys, elt.values):
-                        try:
-                            key_val = ast.literal_eval(key)
-                        except Exception:
-                            continue
-                        if key_val == "content":
-                            new_dict[key_val] = resolve_expr(value, env)
-                        else:
-                            try:
-                                new_dict[key_val] = ast.literal_eval(value)
-                            except Exception:
-                                new_dict[key_val] = Var(ast.unparse(value))
-                    new_list.append(new_dict)
-            return new_list if new_list else "<unsupported input type>"
-        
-        # Handle single message dict
-        elif isinstance(arg_node, ast.Dict):
-            new_dict = {}
-            for key, value in zip(arg_node.keys, arg_node.values):
-                try:
-                    key_val = ast.literal_eval(key)
-                except Exception:
-                    continue
-                if key_val == "content":
-                    new_dict[key_val] = resolve_expr(value, env)
-                else:
-                    try:
-                        new_dict[key_val] = ast.literal_eval(value)
-                    except Exception:
-                        new_dict[key_val] = Var(ast.unparse(value))
-            return new_dict if new_dict else "<unsupported input type>"
-
-    return "<unsupported input type>"
+def grammar(var_value):
+    arg_node, env = get_arg_node(inspect.currentframe().f_back, "grammar")
+    if arg_node is None:
+        return "<unsupported input type>"
+    return process_messages(arg_node, env)
 
 # --- Unit Test Cases: Seven examples using variable-defined content in a literal dict ---
 

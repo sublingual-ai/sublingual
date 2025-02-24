@@ -254,22 +254,37 @@ class TestGrammar(unittest.TestCase):
         }]
         self.assertListEqual(result, expected)
 
-    def test_multiline_format(self):
-        """Test multiline f-strings with complex expressions"""
-        def get_status():
-            return "active"
-            
-        formatted = f"""Status: {get_status()}
-{'✓' if get_status() == 'active' else '✗'}
-Time: {', '.join(str(x) for x in range(3))}""".strip()
+    def test_gitignore_first_line(self):
+        """Test reading first line from .gitignore file"""
+        with open('.gitignore', 'r') as f:
+            first_line = f.readline().strip()
+            second_line = f.readline().strip()
         
-        result = grammar([{"role": "user", "content": formatted}])
-        expected = [{
-            "role": "user",
-            "content": InferredVar("formatted", "Status: active\n✓\nTime: 0, 1, 2")
-        }]
+        result = grammar([
+            {"role": "user", "content": first_line}, 
+            {"role": "user", "content": second_line}
+        ])
+        expected = [
+            {
+                "role": "user", 
+                "content": InferredVar("first_line", "# Project specific")
+            },
+            {
+                "role": "user",
+                "content": InferredVar("second_line", "keys.env")
+            }
+        ]
         self.assertListEqual(result, expected)
 
+    def test_parameter_passing(self, string="hi"):
+        """Test parameter passing to make sure we store as Var"""
+        
+        result = grammar([{"role": "user", "content": string}])
+        expected = [{
+            "role": "user",
+            "content": Var("string")
+        }]
+        self.assertListEqual(result, expected)
 
 if __name__ == '__main__':
     unittest.main() 

@@ -1,5 +1,5 @@
 import unittest
-from sublingual_eval.abstract.t3 import grammar, Format, Concat, Var, Literal, InferredVar
+from sublingual_eval.abstract.grammar import grammar, Format, Concat, Var, Literal, InferredVar
 
 class TestGrammar(unittest.TestCase):
     def compare_dicts(self, result, expected):

@@ -8,7 +8,7 @@ from datetime import datetime
 from openai.resources.chat import chat
 import contextvars
 import uuid
-from sublingual_eval.abstract.t3 import process_messages, get_arg_node, convert_grammar_to_dict
+from sublingual_eval.abstract.grammar import process_messages, get_arg_node, convert_grammar_to_dict
 
 # Set up logging
 logger = logging.getLogger("sublingual")

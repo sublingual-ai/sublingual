@@ -1,5 +1,6 @@
 from setuptools import setup, find_packages
 
+
 setup(
     name="subl",
     version="0.1.0",
@@ -17,6 +18,9 @@ setup(
             # 'subl-server=dashboard.run_servers:main',
         ],
     },
+    data_files=[
+        ("/", ["sublingual_eval.pth"]),
+    ],
     license="MIT",
     include_package_data=True,  # Allow non-code files to be included
     package_data={

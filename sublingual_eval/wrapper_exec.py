@@ -22,7 +22,7 @@ def main():
     os.environ["SUBL_PATCH_DJANGO"] = "1"
     os.environ["SUBL_PATCH_FLASK"] = "1"
 
-    handle_pth()  # Write .pth file to enable logging on all python calls
+    # handle_pth()  # Write .pth file to enable logging on all python calls
     init()
 
     # Pretty print the running command

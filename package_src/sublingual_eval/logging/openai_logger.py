@@ -86,7 +86,14 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
 
             processed_messages.append(processed_msg)
         else:
-            processed_messages.append(msg)
+            # Handle non-dict message objects (like ChatCompletionMessage)
+            processed_messages.append({
+                "role": msg.role,
+                "content": msg.content,
+                **({"tool_calls": [t.model_dump() for t in msg.tool_calls]} if getattr(msg, "tool_calls", None) else {}),
+                **({"tool_call_id": msg.tool_call_id} if getattr(msg, "tool_call_id", None) else {}),
+                **({"name": msg.name} if getattr(msg, "name", None) else {})
+            })
 
     # Process response to handle base64 images
     response_dict = result.to_dict()
@@ -151,7 +158,7 @@ def setup_openai_logging(subl_logs_path: str):
             )
             grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
-            logger.error("Error processing grammar: %s", e)
+            logger.error("\033[92m\033[94m[sublingual]\033[0m Error processing grammar: %s", e)
             grammar_dict = None
 
         try:
@@ -160,7 +167,7 @@ def setup_openai_logging(subl_logs_path: str):
             )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
-            logger.error("Error in logged_completions_create: %s", e)
+            logger.error("\033[92m\033[94m[sublingual]\033[0m Error in logged_completions_create: %s", e)
         finally:
             return result
 
@@ -180,7 +187,7 @@ def setup_openai_async_logging(subl_logs_path: str):
             grammar_result = process_messages(arg_node, env)
             grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
-            logger.error("Error processing grammar: %s", e)
+            logger.error("\033[92m\033[94m[sublingual]\033[0m Error processing grammar: %s", e)
             grammar_dict = None
 
         try:
@@ -190,7 +197,7 @@ def setup_openai_async_logging(subl_logs_path: str):
             )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
-            logger.error("Error in logged_completions_acreate: %s", e)
+            logger.error("\033[92m\033[94m[sublingual]\033[0m Error in logged_completions_acreate: %s", e)
         finally:
             return result
 

@@ -8,6 +8,7 @@ import psutil
 import socket
 import itertools
 import threading
+import webbrowser
 
 
 def is_port_in_use(port):
@@ -163,9 +164,10 @@ def print_startup_message(flask_port, log_dir):
         else "..." + log_dir[-(max_path_length - 3) :]
     )
 
+    server_url = f"http://localhost:{flask_port}"
     messages = [
         "🚀 Server started successfully!",
-        f"🌐 View dashboard at: {YELLOW}http://localhost:{flask_port}{RESET}",
+        f"🌐 View dashboard at: {YELLOW}{server_url}{RESET}",
         f"📁 Logs: {YELLOW}{truncated_log_dir}{RESET}",
         f"💡 {GREEN}Press Ctrl+C to stop the server{RESET}",
     ]
@@ -197,6 +199,7 @@ def print_startup_message(flask_port, log_dir):
         print(f"║ {msg}{padding} ║")
     print(f"╚{'═' * width}╝")
     print()
+    webbrowser.open(server_url)
 
 
 def main(args):

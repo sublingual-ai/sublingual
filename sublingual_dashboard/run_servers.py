@@ -93,19 +93,19 @@ class Spinner:
         self.stop_running = False
         self.spin_thread = None
         self.message = message
-        self.box_width = 41  # Match status box total width
+        self.box_width = 50  # Match status box total width
         self.is_last = is_last
 
     def spin(self):
         while not self.stop_running:
             spinner_char = next(self.spinner)
-            line = f"║ {spinner_char} {self.message}{' ' * (self.box_width - len(self.message) - 1)}║"
+            line = f"{spinner_char} {self.message}"
             sys.stdout.write("\r" + line)
             sys.stdout.flush()
             time.sleep(0.1)
 
         # Show completion message
-        line = f"║ ✓ {self.message}{' ' * (self.box_width - len(self.message) - 1)}║"
+        line = f"  ✓ {self.message}"
         sys.stdout.write("\r" + line)
         if not self.is_last:
             sys.stdout.write("\n")
@@ -156,7 +156,7 @@ def print_startup_message(flask_port, log_dir):
     RESET = "\033[0m"
 
     # Truncate log_dir from the left if too long, preserving 30 chars
-    max_path_length = 30
+    max_path_length = 50
     truncated_log_dir = (
         log_dir
         if len(log_dir) <= max_path_length
@@ -165,7 +165,7 @@ def print_startup_message(flask_port, log_dir):
 
     messages = [
         "🚀 Server started successfully!",
-        f"🔧 API server: {YELLOW}http://localhost:{flask_port}{RESET}",
+        f"🌐 View dashboard at: {YELLOW}http://localhost:{flask_port}{RESET}",
         f"📁 Logs: {YELLOW}{truncated_log_dir}{RESET}",
         f"💡 {GREEN}Press Ctrl+C to stop the server{RESET}",
     ]
@@ -183,7 +183,7 @@ def print_startup_message(flask_port, log_dir):
     width = content_width + 5  # Add padding
 
     # First print the connecting border
-    print(f"╠{'═' * width}╣")
+    print(f"╔{'═' * width}╗")
 
     # Then the rest of the box
     for msg in messages:

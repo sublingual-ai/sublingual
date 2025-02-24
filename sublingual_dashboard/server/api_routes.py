@@ -114,3 +114,21 @@ def rename_log():
         return jsonify({"success": True, "new_path": new_path})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@router.route("/delete_log", methods=["POST"])
+def delete_log():
+    data = request.json
+    file_path = data.get("file_path")
+
+    if not file_path:
+        return jsonify({"error": "Missing file path"}), 400
+
+    try:
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File not found"}), 404
+
+        os.remove(file_path)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

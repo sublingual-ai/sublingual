@@ -46,6 +46,14 @@ const Dashboard = () => {
             Runs View
           </Button>
           <Button
+            variant={view === 'metrics' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setView('metrics')}
+          >
+            <BarChart className="w-4 h-4 mr-2" />
+            Metrics View
+          </Button>
+          <Button
             variant={view === 'sessions' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setView('sessions')}
@@ -66,14 +74,6 @@ const Dashboard = () => {
           >
             <Network className="w-4 h-4 mr-2" />
             Trace View
-          </Button>
-          <Button
-            variant={view === 'metrics' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setView('metrics')}
-          >
-            <BarChart className="w-4 h-4 mr-2" />
-            Metrics View
           </Button>
         </div>
         

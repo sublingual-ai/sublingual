@@ -141,8 +141,12 @@ class CallFinder(ast.NodeVisitor):
         self.calls = []
         self.func_name = func_name
     def visit_Call(self, node):
-        if ast.unparse(node.func).endswith(self.func_name):
-            self.calls.append(node)
+        # Look for any call that ends with our function name
+        try:
+            if self.func_name in ast.unparse(node.func).split('.')[-1]:
+                self.calls.append(node)
+        except:
+            pass
         self.generic_visit(node)
 
 def process_dict(dict_node, env):
@@ -175,18 +179,44 @@ def find_call(tree, func_name, lineno):
                key=lambda n: n.lineno, default=None)
 
 def get_arg_node(frame, func_name):
-    source = textwrap.dedent(inspect.getsource(frame.f_code))
-    tree = ast.parse(source)
-    env = build_env_with_flags(tree)
-    
-    call_node = find_call(tree, func_name, frame.f_lineno)
-    if not call_node or not call_node.args:
-        return None, env
+    try:
+        source = textwrap.dedent(inspect.getsource(frame.f_code))
+        tree = ast.parse(source)
+        env = build_env_with_flags(tree)
         
-    arg_node = call_node.args[0]
-    if isinstance(arg_node, ast.Name) and arg_node.id in env:
-        arg_node = env[arg_node.id][0]
-    return arg_node, env
+        # First try to find direct call
+        call_node = find_call(tree, func_name, frame.f_lineno)
+        
+        # If no direct call found, look in the environment variables
+        if not call_node:
+            for var_name, (node, dynamic) in env.items():
+                if isinstance(node, ast.Call):
+                    # Check if this call matches our target function
+                    try:
+                        if func_name in ast.unparse(node.func).split('.')[-1]:
+                            call_node = node
+                            break
+                    except:
+                        continue
+        
+        if not call_node:
+            return None, env
+            
+        # Look for messages in keyword arguments first
+        for kw in call_node.keywords:
+            if kw.arg == 'messages':
+                return kw.value, env
+                
+        # Fall back to first positional arg if no messages keyword found
+        if call_node.args:
+            arg_node = call_node.args[0]
+            if isinstance(arg_node, ast.Name) and arg_node.id in env:
+                arg_node = env[arg_node.id][0]
+            return arg_node, env
+            
+        return None, env
+    except Exception as e:
+        return None, {}
 
 def grammar(var_value):
     arg_node, env = get_arg_node(inspect.currentframe().f_back, "grammar")

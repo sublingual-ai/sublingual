@@ -8,6 +8,8 @@ from datetime import datetime
 from openai.resources.chat import chat
 import contextvars
 import uuid
+from sublingual_eval.abstract.t3 import process_messages, get_arg_node
+
 # Set up logging
 logger = logging.getLogger("sublingual")
 
@@ -124,14 +126,18 @@ def setup_openai_logging(subl_logs_path: str):
     def logged_completions_create(self, *args, **kwargs):
         # Make the original call
         result = original_completions_create(self, *args, **kwargs)
-        try:
-            # logger.debug(f"Request ID: {request_id_ctx_var.get()}")
-            # logger.debug(
-            #     "completions.Completions.create called with args: %s, kwargs: %s",
-            #     args,
-            #     kwargs,
-            # )
 
+        try:
+            arg_node, env = get_arg_node(inspect.currentframe().f_back, original_completions_create.__name__)
+            print("Arg node:", arg_node)
+            print("Env:", env)
+            grammar_result = process_messages(arg_node, env)
+            print("Grammar result:", grammar_result)
+        except Exception as e:
+            logger.error("Error in logged_completions_create: %s", e)
+            return None
+
+        try:
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)
             write_logged_data(subl_logs_path, logged_data, output_file_name)
@@ -150,14 +156,18 @@ def setup_openai_async_logging(subl_logs_path: str):
     async def logged_completions_acreate(self, *args, **kwargs):
         # Make the original call
         result = await original_acreate(self, *args, **kwargs)
+        
         try:
-            # logger.debug(request_id_ctx_var.get())
-            # logger.debug(
-            #     "completions.AsyncCompletions.create called with args: %s, kwargs: %s",
-            #     args,
-            #     kwargs,
-            # )
-
+            arg_node, env = get_arg_node(inspect.currentframe().f_back, "create")
+            print("Arg node:", arg_node)
+            print("Env:", env)
+            grammar_result = process_messages(arg_node, env)
+            print("Grammar result:", grammar_result)
+        except Exception as e:
+            logger.error("Error in logged_completions_create: %s", e)
+            return None
+        
+        try:
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame)
             write_logged_data(subl_logs_path, logged_data, output_file_name)

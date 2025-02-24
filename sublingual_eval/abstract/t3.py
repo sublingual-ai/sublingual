@@ -83,8 +83,8 @@ def collect_assignments(tree, var_name):
             super().generic_visit(node)
             self.in_dynamic = old
         def visit_Assign(self, node):
-            if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and 
-                node.targets[0].id == var_name):
+            if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == var_name):
                 self.assignments.append((node.lineno, node, self.in_dynamic))
             self.generic_visit(node)
     collector = AssignmentCollector()
@@ -92,37 +92,42 @@ def collect_assignments(tree, var_name):
     return sorted(collector.assignments, key=lambda x: x[0])
 
 # --- Sequential Simulation of the Assignment Chain ---
-
+# We first determine the last dynamic assignment (if any) and then simulate only the assignments that follow.
 def simulate_chain(var_name, assignments, env):
+    last_dynamic_line = None
+    for lineno, _, dyn in assignments:
+        if dyn:
+            last_dynamic_line = lineno
+    if last_dynamic_line is not None:
+        static_assignments = [a for a in assignments if a[0] > last_dynamic_line]
+    else:
+        static_assignments = assignments
+    if not static_assignments:
+        # If no static updates occur after a dynamic update, halt propagation.
+        return Var(var_name)
     chain = None
-    static_chain = True
-    for _, node, dyn in assignments:
-        # Check if assignment is of the form X = X + Y.
+    asterisk_count = 0
+    for _, node, _ in static_assignments:
         if isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Add):
             left = node.value.left
             right = node.value.right
             if isinstance(left, ast.Name) and left.id == var_name:
+                asterisk_count += 1
+                base = Var(var_name + "*" * asterisk_count)
                 if chain is None:
-                    base = Var(var_name) if dyn else resolve_expr(left, env)
                     chain = Concat(base, resolve_expr(right, env))
-                    static_chain = not dyn
                 else:
-                    if dyn or not static_chain:
-                        chain = Concat(Var(var_name), resolve_expr(right, env))
-                        static_chain = not dyn  # Reset static_chain based on dyn.
-                    else:
-                        chain = Concat(chain, resolve_expr(right, env))
-                        static_chain = True
+                    chain = Concat(chain, resolve_expr(right, env))
             else:
                 chain = resolve_expr(node.value, env)
-                static_chain = not dyn
+                asterisk_count = 0
         else:
             chain = resolve_expr(node.value, env)
-            static_chain = not dyn
+            asterisk_count = 0
     return chain
 
 # --- AST Processing Function (resolve_expr) ---
-# Any function call (other than .format() calls) is now returned as a Var.
+# Any function call (other than .format() calls) is returned as a Var.
 def resolve_expr(node, env):
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
@@ -166,8 +171,6 @@ def resolve_expr(node, env):
     elif isinstance(node, ast.Name):
         if node.id in env:
             expr, dynamic = env[node.id]
-            # If the assigned expression or any sub-node contains a function call,
-            # return Var(node.id)
             if contains_call(expr):
                 return Var(node.id)
             if dynamic:

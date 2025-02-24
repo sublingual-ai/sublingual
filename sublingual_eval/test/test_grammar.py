@@ -1,5 +1,5 @@
 import unittest
-from sublingual_eval.abstract.t3 import grammar, Format, Concat, Var, Literal
+from sublingual_eval.abstract.t3 import grammar, Format, Concat, Var, Literal, InferredVar
 
 class TestGrammar(unittest.TestCase):
     def compare_dicts(self, result, expected):
@@ -165,6 +165,19 @@ class TestGrammar(unittest.TestCase):
             )
         }]
         self.assertListEqual(result, expected)
+
+    def test_inferred_var(self):
+        """Test that non-naive variable definitions use f_locals to produce an InferredVar."""
+        def helper():
+            return "computed value"
+        x = helper() + "."
+        result = grammar([{"role": "user", "content": x}])
+        expected = [{
+            "role": "user",
+            "content": InferredVar("x", "computed value.")
+        }]
+        self.assertListEqual(result, expected)
+
 
 if __name__ == '__main__':
     unittest.main() 

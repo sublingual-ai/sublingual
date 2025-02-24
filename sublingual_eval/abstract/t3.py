@@ -24,6 +24,17 @@ class Var:
     def __eq__(self, other):
         return isinstance(other, Var) and self.name == other.name
 
+class InferredVar(Var):
+    def __init__(self, name, value):
+        super().__init__(name)
+        self.value = value
+    def __repr__(self):
+        return f"InferredVar({self.name!r}, {self.value!r})"
+    def get_value(self):
+        return str(self.value)
+    def __eq__(self, other):
+        return isinstance(other, InferredVar) and self.name == other.name and self.value == other.value
+
 class Literal:
     def __init__(self, value):
         self.value = value
@@ -65,6 +76,17 @@ def contains_call(node):
     for child in ast.walk(node):
         if isinstance(child, ast.Call):
             return True
+    return False
+
+# --- Helper to decide if an AST node is "naive" ---
+# Naive definitions include constants, simple concatenations, or f-strings.
+def is_naive(node):
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return True
+    if isinstance(node, ast.JoinedStr):
+        return True
     return False
 
 # --- Environment Builder (used for non-target variable resolution) ---
@@ -110,9 +132,9 @@ def build_env_with_flags(tree, start_line, end_line):
     return builder.env
 
 # --- AST Processing Function (resolve_expr) ---
+# Added extra parameter f_locals to fetch runtime values when needed.
 
-def resolve_expr(node, env, _seen=None):
-    # Initialize recursion guard set
+def resolve_expr(node, env, _seen=None, f_locals=None):
     if _seen is None:
         _seen = set()
     
@@ -120,12 +142,17 @@ def resolve_expr(node, env, _seen=None):
         if node.id in _seen:
             return Var(node.id)  # Break the cycle
         _seen = _seen | {node.id}
-        
-        # Try to resolve from environment
         if node.id in env:
             value_node, is_dynamic = env[node.id]
-            if not is_dynamic:  # If not in control flow, resolve it
-                return resolve_expr(value_node, env, _seen)
+            # Do not apply InferredVar if the definition uses % formatting
+            # or if it is a call to format
+            if not (isinstance(value_node, ast.BinOp) and isinstance(value_node.op, ast.Mod)) \
+               and not (isinstance(value_node, ast.Call) and isinstance(value_node.func, ast.Attribute) and value_node.func.attr == "format") \
+               and not is_naive(value_node):
+                if f_locals and node.id in f_locals:
+                    return InferredVar(node.id, f_locals[node.id])
+            if not is_dynamic:
+                return resolve_expr(value_node, env, _seen, f_locals)
         return Var(node.id)
 
     if isinstance(node, ast.Constant):  # Handle all constants, not just strings
@@ -133,20 +160,23 @@ def resolve_expr(node, env, _seen=None):
 
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
-            return Concat(resolve_expr(node.left, env, _seen), resolve_expr(node.right, env, _seen))
+            return Concat(
+                resolve_expr(node.left, env, _seen, f_locals),
+                resolve_expr(node.right, env, _seen, f_locals)
+            )
         elif isinstance(node.op, ast.Mod):
-            base = resolve_expr(node.left, env, _seen)
+            base = resolve_expr(node.left, env, _seen, f_locals)
             fmt_arg = node.right
             if isinstance(fmt_arg, ast.Tuple):
-                args = tuple(resolve_expr(elt, env, _seen) for elt in fmt_arg.elts)
+                args = tuple(resolve_expr(elt, env, _seen, f_locals) for elt in fmt_arg.elts)
             else:
-                args = (resolve_expr(fmt_arg, env, _seen),)
+                args = (resolve_expr(fmt_arg, env, _seen, f_locals),)
             return Format(base, *args)
     elif isinstance(node, ast.Call):
         if (isinstance(node.func, ast.Attribute) and node.func.attr == "format"):
-            base = resolve_expr(node.func.value, env, _seen)
-            args = tuple(resolve_expr(arg, env, _seen) for arg in node.args)
-            kwargs = {kw.arg: resolve_expr(kw.value, env, _seen) for kw in node.keywords}
+            base = resolve_expr(node.func.value, env, _seen, f_locals)
+            args = tuple(resolve_expr(arg, env, _seen, f_locals) for arg in node.args)
+            kwargs = {kw.arg: resolve_expr(kw.value, env, _seen, f_locals) for kw in node.keywords}
             return Format(base, *args, **kwargs)
         try:
             s = ast.unparse(node)
@@ -161,22 +191,11 @@ def resolve_expr(node, env, _seen=None):
                 fmt_parts.append(value.value)
             elif isinstance(value, ast.FormattedValue):
                 fmt_parts.append("{}")
-                args.append(resolve_expr(value.value, env, _seen))
+                args.append(resolve_expr(value.value, env, _seen, f_locals))
             else:
                 fmt_parts.append("<unknown>")
         fmt_str = "".join(fmt_parts)
         return Format(Literal(fmt_str), *args)
-    elif isinstance(node, ast.Name):
-        if node.id in env:
-            expr, dynamic = env[node.id]
-            if contains_call(expr):
-                return Var(node.id)
-            if dynamic:
-                return Var(node.id)
-            else:
-                return resolve_expr(expr, env, _seen)
-        # If we can't find the variable definition anywhere, assume it's injected
-        return Var(node.id)  # This covers both function params and dependency injection
     elif isinstance(node, ast.arg):
         # Handle function parameters
         return Var(node.arg)
@@ -197,46 +216,43 @@ class CallFinder(ast.NodeVisitor):
     def visit_Call(self, node):
         try:
             func_str = ast.unparse(node.func)
-            # Match the function name passed in the initializer
             if self.func_name in func_str:
                 self.calls.append(node)
         except:
             pass
         self.generic_visit(node)
 
-def process_dict(dict_node, env):
+def process_dict(dict_node, env, f_locals=None):
     result = {}
     for key, value in zip(dict_node.keys, dict_node.values):
         try:
             key_val = ast.literal_eval(key)
             if key_val == "content":
-                result[key_val] = resolve_expr(value, env)
+                result[key_val] = resolve_expr(value, env, f_locals=f_locals)
             else:
                 result[key_val] = ast.literal_eval(value)
         except Exception:
             continue
     return result
 
-def process_messages(arg_node, env):
-    # Handle both direct nodes and variable references
+def process_messages(arg_node, env, f_locals=None):
     if isinstance(arg_node, ast.Name) and arg_node.id in env:
         expr, _ = env[arg_node.id]
         if not contains_call(expr):
             arg_node = expr
     
-    # Process the node
     if isinstance(arg_node, ast.List):
         result = []
         for elt in arg_node.elts:
             if isinstance(elt, ast.Dict):
-                result.append(process_dict(elt, env))
+                result.append(process_dict(elt, env, f_locals=f_locals))
             elif isinstance(elt, ast.Name) and elt.id in env:
                 expr, _ = env[elt.id]
                 if isinstance(expr, ast.Dict):
-                    result.append(process_dict(expr, env))
+                    result.append(process_dict(expr, env, f_locals=f_locals))
         return result if result else "<unsupported input type>"
     elif isinstance(arg_node, ast.Dict):
-        result = process_dict(arg_node, env)
+        result = process_dict(arg_node, env, f_locals=f_locals)
         return result if result else "<unsupported input type>"
     return "<unsupported input type>"
 
@@ -244,20 +260,16 @@ def find_call(tree, func_name, lineno):
     finder = CallFinder(func_name)
     finder.visit(tree)
     
-    # First try to find exact line matches
     exact_matches = [call for call in finder.calls if call.lineno == lineno]
-    
     if exact_matches:
         return exact_matches[0]
     
-    # If no exact match, look for the closest preceding call
     preceding_calls = [call for call in finder.calls if call.lineno < lineno]
     if preceding_calls:
         closest_call = max(preceding_calls, key=lambda x: x.lineno)
         if lineno - closest_call.lineno <= 5:
             return closest_call
     
-    # If still no match found, look for the closest call after
     following_calls = [call for call in finder.calls if call.lineno > lineno]
     if following_calls:
         closest_call = min(following_calls, key=lambda x: x.lineno)
@@ -267,10 +279,6 @@ def find_call(tree, func_name, lineno):
     return None
 
 def get_complete_statement(lines, start_line, forward=True):
-    """Extract a complete statement starting from start_line.
-    If forward=True, look forward for closing brackets/parens.
-    If forward=False, look backward for opening brackets/parens."""
-    
     brackets = {
         '(': ')', '[': ']', '{': '}',
         ')': '(', ']': '[', '}': '{'
@@ -315,18 +323,11 @@ def get_complete_statement(lines, start_line, forward=True):
 
 def get_arg_node(frame, func_name):
     try:
-        # Get source and dedent it before parsing
         source = textwrap.dedent(inspect.getsource(frame.f_code))
-        
-        # Parse the entire function first to build environment
         full_tree = ast.parse(source)
         full_env = build_env_with_flags(full_tree, 1, len(source.split('\n')))
-        
-        # Get function's line range and call line
         start_line = frame.f_code.co_firstlineno
         call_lineno = frame.f_lineno - start_line + 1
-        
-        # Extract complete statement
         lines = source.split('\n')
         statement = get_complete_statement(lines, call_lineno - 1)
         
@@ -334,7 +335,6 @@ def get_arg_node(frame, func_name):
             statement = textwrap.dedent(statement)
             try:
                 tree = ast.parse(statement)
-                # Use the full environment instead of just statement environment
                 call_node = find_call(tree, func_name, 1)
             except Exception:
                 return None, full_env
@@ -342,12 +342,10 @@ def get_arg_node(frame, func_name):
             if not call_node:
                 return None, full_env
 
-            # Look for messages in keyword arguments first
             for kw in call_node.keywords:
                 if kw.arg == 'messages':
                     return kw.value, full_env
             
-            # Fall back to first positional arg if no messages keyword found
             if call_node.args:
                 return call_node.args[0], full_env
 
@@ -357,17 +355,17 @@ def get_arg_node(frame, func_name):
         return None, {}
 
 def grammar(var_value):
-    arg_node, env = get_arg_node(inspect.currentframe().f_back, "grammar")
+    caller_frame = inspect.currentframe().f_back
+    arg_node, env = get_arg_node(caller_frame, "grammar")
     if arg_node is None:
-        # If we couldn't get the AST node, try to handle the input value directly
         if isinstance(var_value, dict):
             if "content" in var_value:
                 return {"role": var_value.get("role", "user"), 
-                       "content": Literal(var_value["content"])}
+                        "content": Literal(var_value["content"])}
             return var_value
         elif isinstance(var_value, list):
             return [{"role": msg.get("role", "user"), 
-                    "content": Literal(msg["content"]) if "content" in msg else None} 
-                   for msg in var_value]
+                     "content": Literal(msg["content"]) if "content" in msg else None} 
+                    for msg in var_value]
         return "<unsupported input type>"
-    return process_messages(arg_node, env)
+    return process_messages(arg_node, env, f_locals=caller_frame.f_locals)

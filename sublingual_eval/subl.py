@@ -3,7 +3,7 @@
 import argparse
 import sys
 from sublingual_eval.wrapper_exec import main as wrapper_main
-from dashboard.run_servers import main as server_main
+from sublingual_dashboard.run_servers import main as server_main
 import os
 
 

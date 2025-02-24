@@ -7,7 +7,10 @@ setup(
     author_email="founders@sublingual.ai",
     description="No-code LLM production app evals.",
     url="https://github.com/sublingual-ai/sublingual-eval",
-    packages=["sublingual_eval", "sublingual_dashboard"],  # Explicitly list the packages
+    packages=[
+        "sublingual_eval",
+        "sublingual_dashboard",
+    ],  # Explicitly list the packages
     entry_points={
         "console_scripts": [
             "subl=sublingual_eval.subl:main",
@@ -15,8 +18,8 @@ setup(
         ],
     },
     license="MIT",
-    include_package_data=True,
-    exclude_package_data={
-        "dashboard": ["frontend/*"],
+    include_package_data=True,  # Allow non-code files to be included
+    package_data={
+        "sublingual_dashboard": ["server/**/*"],
     },
 )

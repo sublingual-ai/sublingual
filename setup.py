@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="subl",
-    version="0.1.0",
+    version="0.1.3",
     author="Matthew Tang and Dylan Bowman",
     author_email="founders@sublingual.ai",
     description="No-code LLM production app evals.",
@@ -26,4 +26,11 @@ setup(
     package_data={
         "sublingual_dashboard": ["server/**/*"],
     },
+    install_requires=[
+        "flask",
+        "flask-cors",
+        "openai",
+        "dotenv",
+        "psutil",
+    ],
 )

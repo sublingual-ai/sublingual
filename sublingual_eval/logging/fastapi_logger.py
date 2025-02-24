@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger("sublingual")
 
 # Import this from openai_logger to share the same context var
-from sublingual_eval.openai_logger import request_id_ctx_var
+from sublingual_eval.logging.openai_logger import request_id_ctx_var
 
 def setup_fastapi_logging():
     try:

@@ -1,16 +1,16 @@
 from textwrap import dedent
 
 # Import our logging setup functions
-from sublingual_eval.openai_logger import (
+from sublingual_eval.logging.openai_logger import (
     setup_openai_logging,
     setup_openai_async_logging,
 )
-from sublingual_eval.fastapi_logger import setup_fastapi_logging
-from sublingual_eval.django_logger import (
+from sublingual_eval.logging.fastapi_logger import setup_fastapi_logging
+from sublingual_eval.logging.django_logger import (
     setup_django_asgi_logging,
     setup_django_wsgi_logging,
 )
-from sublingual_eval.flask_logger import setup_flask_logging
+from sublingual_eval.logging.flask_logger import setup_flask_logging
 import os
 import sysconfig
 

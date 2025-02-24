@@ -132,7 +132,7 @@ def start_flask(
     log_dir="logs",
     verbose=False,
     debug=False,
-    env_path="keys.env",
+    env_path=".env",
 ):
     # Use absolute path from current working directory
     abs_log_dir = os.path.abspath(log_dir)

@@ -51,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--env",
         type=str,
-        default="keys.env",
+        default=".env",
         help="Path to the environment file containing the OpenAI API key",
     )
     parser.add_argument(

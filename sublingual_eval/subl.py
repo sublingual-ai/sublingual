@@ -37,7 +37,7 @@ def main():
             "--env",
             "-e",
             type=str,
-            default="keys.env",
+            default=".env",
             help="Path to the environment file containing the OpenAI API key",
         )
         args = parser.parse_args()

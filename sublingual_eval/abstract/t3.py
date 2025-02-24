@@ -61,6 +61,19 @@ class EnvBuilder(ast.NodeVisitor):
             self.env[varname] = (node.value, self.in_control)
         self.generic_visit(node)
 
+    def visit_Call(self, node):
+        # Track list.append() calls
+        if (isinstance(node.func, ast.Attribute) and 
+            node.func.attr == 'append' and 
+            isinstance(node.func.value, ast.Name)):
+            list_name = node.func.value.id
+            if list_name in self.env:
+                current_list, dynamic = self.env[list_name]
+                if isinstance(current_list, ast.List):
+                    # Add the appended item to the list's elements
+                    current_list.elts.append(node.args[0])
+        self.generic_visit(node)
+
 def build_env_with_flags(tree):
     builder = EnvBuilder()
     builder.visit(tree)
@@ -125,7 +138,11 @@ def resolve_expr(node, env, _seen=None):
                 return Var(node.id)
             else:
                 return resolve_expr(expr, env, _seen)
-        return Var(node.id)
+        # If we can't find the variable definition anywhere, assume it's injected
+        return Var(node.id)  # This covers both function params and dependency injection
+    elif isinstance(node, ast.arg):
+        # Handle function parameters
+        return Var(node.arg)
     else:
         try:
             s = ast.unparse(node)
@@ -141,9 +158,10 @@ class CallFinder(ast.NodeVisitor):
         self.calls = []
         self.func_name = func_name
     def visit_Call(self, node):
-        # Look for any call that ends with our function name
         try:
-            if self.func_name in ast.unparse(node.func).split('.')[-1]:
+            func_str = ast.unparse(node.func)
+            # Match the function name passed in the initializer
+            if self.func_name in func_str:
                 self.calls.append(node)
         except:
             pass
@@ -163,9 +181,22 @@ def process_dict(dict_node, env):
     return result
 
 def process_messages(arg_node, env):
+    # Handle both direct nodes and variable references
+    if isinstance(arg_node, ast.Name) and arg_node.id in env:
+        expr, _ = env[arg_node.id]
+        if not contains_call(expr):
+            arg_node = expr
+    
+    # Process the node
     if isinstance(arg_node, ast.List):
-        result = [process_dict(elt, env) for elt in arg_node.elts 
-                 if isinstance(elt, ast.Dict)]
+        result = []
+        for elt in arg_node.elts:
+            if isinstance(elt, ast.Dict):
+                result.append(process_dict(elt, env))
+            elif isinstance(elt, ast.Name) and elt.id in env:
+                expr, _ = env[elt.id]
+                if isinstance(expr, ast.Dict):
+                    result.append(process_dict(expr, env))
         return result if result else "<unsupported input type>"
     elif isinstance(arg_node, ast.Dict):
         result = process_dict(arg_node, env)
@@ -175,47 +206,70 @@ def process_messages(arg_node, env):
 def find_call(tree, func_name, lineno):
     finder = CallFinder(func_name)
     finder.visit(tree)
-    return max((call for call in finder.calls if call.lineno <= lineno), 
-               key=lambda n: n.lineno, default=None)
+    
+    # First try to find exact line matches
+    exact_matches = [call for call in finder.calls if call.lineno == lineno]
+    
+    if exact_matches:
+        return exact_matches[0]
+    
+    # If no exact match, look for the closest preceding call
+    preceding_calls = [call for call in finder.calls if call.lineno < lineno]
+    if preceding_calls:
+        closest_call = max(preceding_calls, key=lambda x: x.lineno)
+        if lineno - closest_call.lineno <= 5:
+            return closest_call
+    
+    # If still no match found, look for the closest call after
+    following_calls = [call for call in finder.calls if call.lineno > lineno]
+    if following_calls:
+        closest_call = min(following_calls, key=lambda x: x.lineno)
+        if closest_call.lineno - lineno <= 5:
+            return closest_call
+            
+    return None
 
 def get_arg_node(frame, func_name):
     try:
-        source = textwrap.dedent(inspect.getsource(frame.f_code))
+        # Get the source code from multiple potential sources
+        source = None
+        filename = frame.f_code.co_filename
+        
+        # Try to get source from the file first
+        try:
+            with open(filename, 'r') as f:
+                source = f.read()
+        except Exception:
+            pass
+            
+        # If file read failed, try getting source from frame
+        if not source:
+            try:
+                source = textwrap.dedent(inspect.getsource(frame.f_code))
+            except Exception:
+                return None, {}
+
         tree = ast.parse(source)
         env = build_env_with_flags(tree)
         
-        # First try to find direct call
+        # Get the call at the exact line number
         call_node = find_call(tree, func_name, frame.f_lineno)
-        
-        # If no direct call found, look in the environment variables
-        if not call_node:
-            for var_name, (node, dynamic) in env.items():
-                if isinstance(node, ast.Call):
-                    # Check if this call matches our target function
-                    try:
-                        if func_name in ast.unparse(node.func).split('.')[-1]:
-                            call_node = node
-                            break
-                    except:
-                        continue
         
         if not call_node:
             return None, env
-            
+
         # Look for messages in keyword arguments first
         for kw in call_node.keywords:
             if kw.arg == 'messages':
                 return kw.value, env
-                
+        
         # Fall back to first positional arg if no messages keyword found
         if call_node.args:
-            arg_node = call_node.args[0]
-            if isinstance(arg_node, ast.Name) and arg_node.id in env:
-                arg_node = env[arg_node.id][0]
-            return arg_node, env
-            
+            return call_node.args[0], env
+
         return None, env
-    except Exception as e:
+
+    except Exception:
         return None, {}
 
 def grammar(var_value):
@@ -288,7 +342,7 @@ def example8():
     }
     print("\nExample 8 (variable dict) grammar(message):")
     print(grammar(msg))
-
+    
     msgs = [
         {"role": "system", "content": "System: " + ("Init " + "complete")},
         {"role": "user", "content": "User: " + "How are you?"}

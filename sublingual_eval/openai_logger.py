@@ -129,8 +129,6 @@ def setup_openai_logging(subl_logs_path: str):
 
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, original_completions_create.__name__)
-            print("Arg node:", arg_node)
-            print("Env:", env)
             grammar_result = process_messages(arg_node, env)
             print("Grammar result:", grammar_result)
         except Exception as e:
@@ -159,8 +157,6 @@ def setup_openai_async_logging(subl_logs_path: str):
         
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, "create")
-            print("Arg node:", arg_node)
-            print("Env:", env)
             grammar_result = process_messages(arg_node, env)
             print("Grammar result:", grammar_result)
         except Exception as e:

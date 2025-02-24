@@ -35,20 +35,45 @@ class Format:
             parts.append(", ".join(f"{k}={v!r}" for k, v in self.kwargs.items()))
         return "Format(" + ", ".join(parts) + ")"
 
-# --- AST processing functions ---
+# --- Environment Builder with Control Flow Awareness ---
 
-def build_env(node):
+class EnvBuilder(ast.NodeVisitor):
     """
-    Walk the AST and build a mapping from variable names to their assigned expression.
-    Only handles simple assignments (single target, no reassignments).
+    Builds an environment mapping variable names to a tuple (expr, dynamic_flag),
+    where expr is the AST node of its *final* assignment and dynamic_flag is True if the
+    variable was ever assigned within a control flow block (if/for/while) or reassigned.
     """
-    env = {}
-    for stmt in ast.walk(node):
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
-            target = stmt.targets[0]
-            if isinstance(target, ast.Name):
-                env[target.id] = stmt.value
-    return env
+    def __init__(self):
+        self.env = {}
+        self.in_control = False
+
+    def generic_visit(self, node):
+        old_control = self.in_control
+        if isinstance(node, (ast.If, ast.For, ast.While)):
+            self.in_control = True
+        super().generic_visit(node)
+        self.in_control = old_control
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            varname = node.targets[0].id
+            # If this variable was already assigned, mark as dynamic.
+            if varname in self.env:
+                self.env[varname] = (node.value, True)
+            else:
+                # Mark as dynamic if currently in control flow.
+                self.env[varname] = (node.value, self.in_control)
+        self.generic_visit(node)
+
+def build_env_with_flags(tree):
+    """
+    Build an environment mapping variable names to (expr, dynamic_flag) using EnvBuilder.
+    """
+    builder = EnvBuilder()
+    builder.visit(tree)
+    return builder.env
+
+# --- AST processing functions ---
 
 def resolve_expr(node, env):
     """
@@ -59,7 +84,7 @@ def resolve_expr(node, env):
       - f-strings (converted into Format nodes)
       - %-formatting (BinOp with Mod) as Format nodes
       - .format() calls on strings as Format nodes
-      - Variable references (ast.Name)
+      - Variable references (ast.Name); if the variable is dynamic, return Var
     """
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
@@ -67,7 +92,6 @@ def resolve_expr(node, env):
             right = resolve_expr(node.right, env)
             return Concat(left, right)
         elif isinstance(node.op, ast.Mod):
-            # %-formatting: left % right
             base = resolve_expr(node.left, env)
             fmt_arg = node.right
             if isinstance(fmt_arg, ast.Tuple):
@@ -76,13 +100,11 @@ def resolve_expr(node, env):
                 args = (resolve_expr(fmt_arg, env),)
             return Format(base, *args)
     elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-        # .format() call: e.g., "hello {}".format(x)
         base = resolve_expr(node.func.value, env)
         args = tuple(resolve_expr(arg, env) for arg in node.args)
         kwargs = {kw.arg: resolve_expr(kw.value, env) for kw in node.keywords}
         return Format(base, *args, **kwargs)
     elif isinstance(node, ast.JoinedStr):
-        # Convert f-string into a format string: replace each FormattedValue with '{}'
         fmt_parts = []
         args = []
         for value in node.values:
@@ -99,7 +121,11 @@ def resolve_expr(node, env):
         return Literal(node.value)
     elif isinstance(node, ast.Name):
         if node.id in env:
-            return resolve_expr(env[node.id], env)
+            expr, dynamic = env[node.id]
+            if dynamic:
+                return Var(node.id)
+            else:
+                return resolve_expr(expr, env)
         else:
             return Var(node.id)
     else:
@@ -109,18 +135,6 @@ def resolve_expr(node, env):
             s = "<expr>"
         return Var(s)
 
-def find_assignment_of(var_name, tree):
-    """
-    Find the assignment node corresponding to a variable name.
-    Returns the AST node for the assigned expression.
-    """
-    for stmt in ast.walk(tree):
-        if isinstance(stmt, ast.Assign):
-            for target in stmt.targets:
-                if isinstance(target, ast.Name) and target.id == var_name:
-                    return stmt.value
-    return None
-
 # --- The main grammar() function ---
 
 def grammar(var_value):
@@ -129,19 +143,10 @@ def grammar(var_value):
     This function inspects the caller’s source, builds an AST, and then
     determines how the string was built.
     
-    Example usage:
-    
-      def my_func(a):
-          b = a + "hi"
-          c = "lo"
-          d = b + c
-          e = f"i am {d}!"
-          print(grammar(e))
-    
-    For f-strings, the output is now expressed as a Format node. For example:
-      Format(Literal("i am {}!"), Concat(Concat(Var('a'), Literal("hi")), Literal("lo")))
+    The final assignment is always resolved if available.
+    Within that AST, any reference to a variable that was updated dynamically
+    will appear as Var.
     """
-    # Get the caller frame and its source
     frame = inspect.currentframe().f_back
     try:
         source = inspect.getsource(frame.f_code)
@@ -149,17 +154,17 @@ def grammar(var_value):
         return "<source unavailable>"
     source = textwrap.dedent(source)
     
-    # Parse the source code
     tree = ast.parse(source)
+    env = build_env_with_flags(tree)
     
-    # Build an environment mapping variable names to their assigned expressions.
-    env = build_env(tree)
-    
-    # Heuristically determine which variable matches var_value
+    # Heuristically determine which variable matches var_value.
     target_var = None
-    for name, expr in env.items():
+    for name, (expr, dynamic) in env.items():
+        if expr is None:
+            continue
         try:
-            val = eval(compile(ast.Expression(expr), filename="<ast>", mode="eval"), frame.f_globals, frame.f_locals)
+            val = eval(compile(ast.Expression(expr), filename="<ast>", mode="eval"),
+                       frame.f_globals, frame.f_locals)
         except Exception:
             continue
         if val == var_value:
@@ -167,30 +172,35 @@ def grammar(var_value):
             break
 
     if target_var is None:
-        return "<could not resolve variable>"
+        # Fallback: for dynamic variables, check f_locals
+        for name in frame.f_locals:
+            if frame.f_locals[name] == var_value:
+                target_var = name
+                break
+        if target_var is None:
+            return "<could not resolve variable>"
     
-    assigned_node = env.get(target_var)
-    if assigned_node is None:
-        return f"<no assignment for {target_var}>"
+    expr, dynamic = env.get(target_var, (None, True))
+    if expr is None:
+        return Var(target_var)
     
-    # Build the grammar representation recursively.
-    grammar_rep = resolve_expr(assigned_node, env)
+    # Always resolve the final assignment AST.
+    grammar_rep = resolve_expr(expr, env)
     return grammar_rep
 
 # --- Example usage and test cases ---
 
-if __name__ == "__main__":
-    # Example 1: f-string with concatenation
+def old_test_cases():
+    # Example 1: f-string with concatenation (static assignment)
     def example1():
         b = "hi"
         c = "lo"
         d = b + c
         e = f"i am {d}!"
-        # f-string becomes a Format node
         print("Example1 grammar(e):", grammar(e))
     example1()
 
-    # Example 2: parameter plus concatenation
+    # Example 2: parameter plus concatenation (static assignment for d)
     def example2(a):
         b = a + "hi"
         c = "lo"
@@ -210,3 +220,27 @@ if __name__ == "__main__":
         s = "Sum: {} + {} = {}".format(1, 2, 3)
         print("Example4 grammar(s):", grammar(s))
     example4()
+
+def new_test_cases():
+    # Example 5: variable updated in an if statement (dynamic)
+    def example5():
+        x = "hello"
+        if True:
+            x = x + " world"
+        print("Example5 grammar(x):", grammar(x))
+    example5()
+
+    # Example 6: variable updated in a for loop, then updated outside (dynamic final assignment)
+    def example6():
+        s = "start"
+        for i in range(2):
+            s = s + " loop"
+        s = s + "end"
+        print("Example6 grammar(s):", grammar(s))
+    example6()
+
+if __name__ == "__main__":
+    print("=== Old Test Cases ===")
+    old_test_cases()
+    print("\n=== New Test Cases ===")
+    new_test_cases()

@@ -163,28 +163,16 @@ def grammar(var_value):
     candidate_calls = [call for call in finder.calls if call.lineno <= caller_lineno]
     call_node = max(candidate_calls, key=lambda n: n.lineno) if candidate_calls else None
 
-    # --- Fallback: Use source context if call argument isn't a literal
-    if call_node is None or not (call_node.args and isinstance(call_node.args[0], (ast.Dict, ast.List))):
-        frame_info = inspect.getframeinfo(frame)
-        if frame_info.code_context:
-            call_source = "".join(frame_info.code_context)
-            try:
-                call_tree = ast.parse(call_source)
-                for node in ast.walk(call_tree):
-                    if isinstance(node, ast.Call):
-                        try:
-                            func_name = ast.unparse(node.func)
-                        except Exception:
-                            func_name = ""
-                        if func_name.endswith("grammar"):
-                            call_node = node
-                            break
-            except Exception:
-                pass
-
-    # --- Process a literal list of message dicts.
+    # --- Process the argument node ---
     if call_node and call_node.args:
         arg_node = call_node.args[0]
+        
+        # If the argument is a variable name, try to resolve it from the environment
+        if isinstance(arg_node, ast.Name) and arg_node.id in env:
+            expr, _ = env[arg_node.id]
+            arg_node = expr
+
+        # Handle list of message dicts
         if isinstance(arg_node, ast.List):
             new_list = []
             for elt in arg_node.elts:
@@ -194,7 +182,7 @@ def grammar(var_value):
                         try:
                             key_val = ast.literal_eval(key)
                         except Exception:
-                            key_val = None
+                            continue
                         if key_val == "content":
                             new_dict[key_val] = resolve_expr(value, env)
                         else:
@@ -203,7 +191,24 @@ def grammar(var_value):
                             except Exception:
                                 new_dict[key_val] = Var(ast.unparse(value))
                     new_list.append(new_dict)
-            return new_list
+            return new_list if new_list else "<unsupported input type>"
+        
+        # Handle single message dict
+        elif isinstance(arg_node, ast.Dict):
+            new_dict = {}
+            for key, value in zip(arg_node.keys, arg_node.values):
+                try:
+                    key_val = ast.literal_eval(key)
+                except Exception:
+                    continue
+                if key_val == "content":
+                    new_dict[key_val] = resolve_expr(value, env)
+                else:
+                    try:
+                        new_dict[key_val] = ast.literal_eval(value)
+                    except Exception:
+                        new_dict[key_val] = Var(ast.unparse(value))
+            return new_dict if new_dict else "<unsupported input type>"
 
     return "<unsupported input type>"
 
@@ -263,6 +268,79 @@ def example7():
     s = s + a
     print("Example7 grammar(messages):", grammar([{"role": "user", "content": s}]))
 
+def example8():
+    # Example 8: Using a variable to hold the message dict
+    msg = {
+        "role": "user",
+        "content": "Hello " + "world"
+    }
+    print("\nExample 8 (variable dict) grammar(message):")
+    print(grammar(msg))
+
+    msgs = [
+        {"role": "system", "content": "System: " + ("Init " + "complete")},
+        {"role": "user", "content": "User: " + "How are you?"}
+    ]
+    print("\nExample 8 (variable list) grammar(messages):")
+    print(grammar(msgs))
+
+def example9():
+    # Example 9: Variable dict/list with f-strings and concatenation
+    b = "hi"
+    c = "lo"
+    d = b + c
+    e = f"i am {d}!"
+    
+    # Variable dict with f-string content
+    msg = {
+        "role": "user",
+        "content": e
+    }
+    print("\nExample 9 (variable dict with f-string) grammar(message):")
+    print(grammar(msg))
+    
+    # Variable list with format() and %-formatting
+    s1 = "Hello, %s" % "world"
+    s2 = "Sum: {} + {} = {}".format(1, 2, 3)
+    msgs = [
+        {"role": "system", "content": s1},
+        {"role": "user", "content": s2}
+    ]
+    print("\nExample 9 (variable list with formatting) grammar(messages):")
+    print(grammar(msgs))
+
+def example10():
+    # Example 10: Variable dict/list with dynamic content
+    # Dynamic string building
+    x = "hello"
+    if True:
+        x = x + " world"
+    
+    # Loop-based string building
+    s = "start"
+    for i in range(2):
+        s = s + " loop"
+    s = s + "end"
+    
+    # Variable dict with dynamic content
+    msg = {
+        "role": "user",
+        "content": x + " - " + s
+    }
+    print("\nExample 10 (variable dict with dynamic content) grammar(message):")
+    print(grammar(msg))
+    
+    # Variable list with file read simulation
+    with open(".gitignore", "r") as f:
+        a = f.read().split("\n")[0]
+    
+    msgs = [
+        {"role": "system", "content": "System message: " + s},
+        {"role": "user", "content": "File content: " + a}
+    ]
+    print("\nExample 10 (variable list with file read) grammar(messages):")
+    print(grammar(msgs))
+
 if __name__ == "__main__":
     print("=== Message Test Cases ===")
     example1()
@@ -272,3 +350,6 @@ if __name__ == "__main__":
     example5()
     example6()
     example7()
+    example8()
+    example9()
+    example10()

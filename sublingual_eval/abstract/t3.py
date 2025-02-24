@@ -180,18 +180,20 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
                     return Var(node.id)
                 # For other operations in control flow with available value, use InferredVar
                 if f_locals and node.id in f_locals:
-                    return InferredVar(node.id, f_locals[node.id])
+                    value = f_locals[node.id]
+                    if value is not None:
+                        return InferredVar(node.id, value)
+                    # Fall through to Var if value is None
                 return Var(node.id)
-            
-            # For function calls (not in control flow), use InferredVar if available
-            if contains_call(value_node) and f_locals and node.id in f_locals:
-                # Skip if it's a format() call
-                if isinstance(value_node, ast.Call) and isinstance(value_node.func, ast.Attribute) and value_node.func.attr == "format":
-                    return resolve_expr(value_node, env, _seen, f_locals)
-                return InferredVar(node.id, f_locals[node.id])
             
             # For non-dynamic, non-call expressions, resolve normally
             return resolve_expr(value_node, env, _seen, f_locals)
+        # If not in env but in f_locals, use InferredVar
+        if f_locals and node.id in f_locals:
+            value = f_locals[node.id]
+            if value is not None:
+                return InferredVar(node.id, value)
+            # Fall through to Var if value is None
         return Var(node.id)
 
     if isinstance(node, ast.Constant):
@@ -276,8 +278,10 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
         fmt_str = "".join(fmt_parts)
         return Format(Literal(fmt_str), *args)
     elif isinstance(node, ast.arg):
-        # Handle function parameters
-        return Var(node.arg)
+        # Handle function parameters - use InferredVar if we have the value
+        if f_locals and node.arg in f_locals:
+            return InferredVar(node.arg, f_locals[node.arg])
+        return Var(node.arg)  # Fallback if we don't have the value
     else:
         try:
             s = ast.unparse(node)

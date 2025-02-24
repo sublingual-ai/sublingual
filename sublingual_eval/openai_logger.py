@@ -133,15 +133,15 @@ def setup_openai_logging(subl_logs_path: str):
         result = original_completions_create(self, *args, **kwargs)
 
         try:
-            arg_node, env = get_arg_node(inspect.currentframe().f_back, original_completions_create.__name__)
-            grammar_result = process_messages(arg_node, env)
+            caller_frame = inspect.currentframe().f_back
+            arg_node, env = get_arg_node(caller_frame, original_completions_create.__name__)
+            grammar_result = process_messages(arg_node, env, f_locals=caller_frame.f_locals)
             grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
             logger.error("Error processing grammar: %s", e)
             grammar_dict = None
 
         try:
-            caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(result, args, kwargs, caller_frame, grammar_dict)
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:

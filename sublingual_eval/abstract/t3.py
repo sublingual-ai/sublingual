@@ -13,6 +13,11 @@ class Concat:
         return "".join(p.get_value() for p in self.parts)
     def __eq__(self, other):
         return isinstance(other, Concat) and self.parts == other.parts
+    def to_dict(self):
+        return {
+            "type": "Concat",
+            "parts": [p.to_dict() for p in self.parts]
+        }
 
 class Var:
     def __init__(self, name):
@@ -23,6 +28,11 @@ class Var:
         return self.name
     def __eq__(self, other):
         return isinstance(other, Var) and self.name == other.name
+    def to_dict(self):
+        return {
+            "type": "Var",
+            "name": self.name
+        }
 
 class InferredVar(Var):
     def __init__(self, name, value):
@@ -34,6 +44,12 @@ class InferredVar(Var):
         return str(self.value)
     def __eq__(self, other):
         return isinstance(other, InferredVar) and self.name == other.name and self.value == other.value
+    def to_dict(self):
+        return {
+            "type": "InferredVar",
+            "name": self.name,
+            "value": self.value
+        }
 
 class Literal:
     def __init__(self, value):
@@ -44,6 +60,11 @@ class Literal:
         return self.value
     def __eq__(self, other):
         return isinstance(other, Literal) and self.value == other.value
+    def to_dict(self):
+        return {
+            "type": "Literal",
+            "value": self.value
+        }
 
 class Format:
     def __init__(self, base, *args, **kwargs):
@@ -69,6 +90,13 @@ class Format:
                 self.base == other.base and 
                 self.args == other.args and 
                 self.kwargs == other.kwargs)
+    def to_dict(self):
+        return {
+            "type": "Format",
+            "base": self.base.to_dict(),
+            "args": [arg.to_dict() for arg in self.args],
+            "kwargs": {k: v.to_dict() for k, v in self.kwargs.items()}
+        }
 
 # --- Helper to detect function calls in an AST subtree ---
 
@@ -281,7 +309,12 @@ def process_dict(dict_node, env, f_locals=None):
             if key_val == "content":
                 result[key_val] = resolve_expr(value, env, f_locals=f_locals)
             else:
-                result[key_val] = ast.literal_eval(value)
+                try:
+                    result[key_val] = ast.literal_eval(value)
+                except:
+                    # Handle cases where the value can't be evaluated
+                    if f_locals and isinstance(value, ast.Name) and value.id in f_locals:
+                        result[key_val] = f_locals[value.id]
         except Exception:
             continue
     return result
@@ -420,3 +453,18 @@ def grammar(var_value):
                     for msg in var_value]
         return "<unsupported input type>"
     return process_messages(arg_node, env, f_locals=caller_frame.f_locals)
+
+def convert_grammar_to_dict(grammar_result):
+    """Convert grammar objects to JSON-serializable dictionaries"""
+    if isinstance(grammar_result, list):
+        return [
+            {k: msg[k].to_dict() if hasattr(msg[k], 'to_dict') else msg[k] 
+             for k in msg}
+            for msg in grammar_result
+        ]
+    elif isinstance(grammar_result, dict):
+        return {
+            k: v.to_dict() if hasattr(v, 'to_dict') else v 
+            for k, v in grammar_result.items()
+        }
+    return grammar_result

@@ -8,7 +8,7 @@ from datetime import datetime
 from openai.resources.chat import chat
 import contextvars
 import uuid
-from sublingual_eval.abstract.t3 import process_messages, get_arg_node
+from sublingual_eval.abstract.t3 import process_messages, get_arg_node, convert_grammar_to_dict
 
 # Set up logging
 logger = logging.getLogger("sublingual")
@@ -16,15 +16,22 @@ logger = logging.getLogger("sublingual")
 # Context variable for request tracking
 request_id_ctx_var = contextvars.ContextVar("request_id", default=None)
 
+# Add this at the top with other imports
+class GrammarEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if hasattr(obj, '__json__'):
+            return obj.__json__()
+        return super().default(obj)
 
 output_file_name = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jsonl"
 
+
 def write_logged_data(subl_logs_path, logged_data, file_name):
     with open(os.path.join(subl_logs_path, file_name), "a") as f:
-        f.write(json.dumps(logged_data) + "\n")
-    # print(f"Logged data written to {os.path.join(subl_logs_path, file_name)}")
+        f.write(json.dumps(logged_data, cls=GrammarEncoder) + "\n")
 
-def create_logged_data(result, args, kwargs, caller_frame):
+
+def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
     """Create the logged data dictionary from a completion result"""
     # Get the full stack trace
     stack = inspect.stack()
@@ -60,7 +67,6 @@ def create_logged_data(result, args, kwargs, caller_frame):
                 for item in content:
                     if isinstance(item, dict):
                         item_copy = item.copy()
-                        # Check for base64 images in image_url
                         if "image_url" in item_copy:
                             url = item_copy["image_url"].get("url", "")
                             if url and url.startswith("data:image"):
@@ -98,7 +104,7 @@ def create_logged_data(result, args, kwargs, caller_frame):
         "log_id": str(uuid.uuid4()),
         "session_id": request_id_ctx_var.get(),
         "messages": processed_messages,
-        # "response_texts": [choice.message.content for choice in result.choices],
+        "grammar_result": grammar_json,
         "symbolic_mappings": [],  # Simplified for now
         "response": response_dict,
         "usage": result.usage.to_dict(),
@@ -124,20 +130,19 @@ def setup_openai_logging(subl_logs_path: str):
 
     @functools.wraps(original_completions_create)
     def logged_completions_create(self, *args, **kwargs):
-        # Make the original call
         result = original_completions_create(self, *args, **kwargs)
 
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, original_completions_create.__name__)
             grammar_result = process_messages(arg_node, env)
-            print("Grammar result:", grammar_result)
+            grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
-            logger.error("Error in logged_completions_create: %s", e)
-            return None
+            logger.error("Error processing grammar: %s", e)
+            grammar_dict = None
 
         try:
             caller_frame = inspect.currentframe().f_back
-            logged_data = create_logged_data(result, args, kwargs, caller_frame)
+            logged_data = create_logged_data(result, args, kwargs, caller_frame, grammar_dict)
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_create: %s", e)
@@ -152,20 +157,19 @@ def setup_openai_async_logging(subl_logs_path: str):
 
     @functools.wraps(original_acreate)
     async def logged_completions_acreate(self, *args, **kwargs):
-        # Make the original call
         result = await original_acreate(self, *args, **kwargs)
         
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, "create")
             grammar_result = process_messages(arg_node, env)
-            print("Grammar result:", grammar_result)
+            grammar_dict = convert_grammar_to_dict(grammar_result)
         except Exception as e:
-            logger.error("Error in logged_completions_create: %s", e)
-            return None
+            logger.error("Error processing grammar: %s", e)
+            grammar_dict = None
         
         try:
             caller_frame = inspect.currentframe().f_back
-            logged_data = create_logged_data(result, args, kwargs, caller_frame)
+            logged_data = create_logged_data(result, args, kwargs, caller_frame, grammar_dict)
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
             logger.error("Error in logged_completions_acreate: %s", e)

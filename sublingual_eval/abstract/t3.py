@@ -35,13 +35,17 @@ class Format:
             parts.append(", ".join(f"{k}={v!r}" for k, v in self.kwargs.items()))
         return "Format(" + ", ".join(parts) + ")"
 
+# --- Helper to detect function calls in an AST subtree ---
+
+def contains_call(node):
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            return True
+    return False
+
 # --- Environment Builder (used for non-target variable resolution) ---
 
 class EnvBuilder(ast.NodeVisitor):
-    """
-    Build a mapping of variable names to (final_assigned_ast, dynamic_flag).
-    This is used for resolving references inside expressions.
-    """
     def __init__(self):
         self.env = {}
         self.in_control = False
@@ -56,7 +60,6 @@ class EnvBuilder(ast.NodeVisitor):
     def visit_Assign(self, node):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             varname = node.targets[0].id
-            # Always store the final assignment and mark dynamic if inside control flow.
             self.env[varname] = (node.value, self.in_control)
         self.generic_visit(node)
 
@@ -68,10 +71,6 @@ def build_env_with_flags(tree):
 # --- Collecting Assignments for the Target Variable ---
 
 def collect_assignments(tree, var_name):
-    """
-    Returns a list of assignments to var_name as tuples:
-    (lineno, assign_node, dynamic_flag)
-    """
     assignments = []
     class AssignmentCollector(ast.NodeVisitor):
         def __init__(self):
@@ -90,83 +89,44 @@ def collect_assignments(tree, var_name):
             self.generic_visit(node)
     collector = AssignmentCollector()
     collector.visit(tree)
-    assignments = sorted(collector.assignments, key=lambda x: x[0])
-    return assignments
+    return sorted(collector.assignments, key=lambda x: x[0])
 
 # --- Sequential Simulation of the Assignment Chain ---
 
 def simulate_chain(var_name, assignments, env):
-    """
-    Simulate the symbolic chain for variable var_name using its assignments.
-    For assignments of the form:
-        X = X + Y
-    we update the chain as follows:
-      - If the assignment is dynamic, set chain = Concat(Var(X), resolved(Y))
-        and mark the chain as dynamic.
-      - If the assignment is static:
-          * If the previous chain was dynamic, reset the chain as
-                Concat(Var(X), resolved(Y))
-          * Otherwise, update as chain = Concat(previous_chain, resolved(Y)).
-    For a simple (non-concat) assignment, simply resolve the expression.
-    """
     chain = None
-    static_chain = True  # True if the chain so far is built statically.
+    static_chain = True
     for _, node, dyn in assignments:
         # Check if assignment is of the form X = X + Y.
         if isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Add):
             left = node.value.left
             right = node.value.right
             if isinstance(left, ast.Name) and left.id == var_name:
-                # It's a self concatenation.
                 if chain is None:
-                    # First assignment of this pattern.
-                    if dyn:
-                        base = Var(var_name)
-                        static_chain = False
-                    else:
-                        base = resolve_expr(left, env)  # usually initial value
-                        static_chain = True
+                    base = Var(var_name) if dyn else resolve_expr(left, env)
                     chain = Concat(base, resolve_expr(right, env))
+                    static_chain = not dyn
                 else:
-                    if dyn:
-                        # Dynamic update: reset left to Var(var_name)
+                    if dyn or not static_chain:
                         chain = Concat(Var(var_name), resolve_expr(right, env))
-                        static_chain = False
+                        static_chain = not dyn  # Reset static_chain based on dyn.
                     else:
-                        # Static update:
-                        if static_chain:
-                            base = chain
-                        else:
-                            base = Var(var_name)
-                        chain = Concat(base, resolve_expr(right, env))
+                        chain = Concat(chain, resolve_expr(right, env))
                         static_chain = True
             else:
-                # Not of the form X = X + ...; override chain.
                 chain = resolve_expr(node.value, env)
                 static_chain = not dyn
         else:
-            # Simple assignment.
             chain = resolve_expr(node.value, env)
             static_chain = not dyn
     return chain
 
 # --- AST Processing Function (resolve_expr) ---
-
+# Any function call (other than .format() calls) is now returned as a Var.
 def resolve_expr(node, env):
-    """
-    Recursively convert an AST node representing a string expression into our grammar.
-    Supports:
-      - String literals as Literal nodes
-      - Concatenation (using +) as Concat nodes
-      - f-strings (converted into Format nodes)
-      - %-formatting and .format() calls as Format nodes
-      - Variable references: if marked dynamic in env, return Var; otherwise, resolve.
-    """
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
-            left = resolve_expr(node.left, env)
-            right = resolve_expr(node.right, env)
-            return Concat(left, right)
+            return Concat(resolve_expr(node.left, env), resolve_expr(node.right, env))
         elif isinstance(node.op, ast.Mod):
             base = resolve_expr(node.left, env)
             fmt_arg = node.right
@@ -175,11 +135,19 @@ def resolve_expr(node, env):
             else:
                 args = (resolve_expr(fmt_arg, env),)
             return Format(base, *args)
-    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-        base = resolve_expr(node.func.value, env)
-        args = tuple(resolve_expr(arg, env) for arg in node.args)
-        kwargs = {kw.arg: resolve_expr(kw.value, env) for kw in node.keywords}
-        return Format(base, *args, **kwargs)
+    elif isinstance(node, ast.Call):
+        # If it's a .format() call, handle it specially.
+        if (isinstance(node.func, ast.Attribute) and node.func.attr == "format"):
+            base = resolve_expr(node.func.value, env)
+            args = tuple(resolve_expr(arg, env) for arg in node.args)
+            kwargs = {kw.arg: resolve_expr(kw.value, env) for kw in node.keywords}
+            return Format(base, *args, **kwargs)
+        # For any other function call, simply return a Var.
+        try:
+            s = ast.unparse(node)
+        except Exception:
+            s = "<call>"
+        return Var(s)
     elif isinstance(node, ast.JoinedStr):
         fmt_parts = []
         args = []
@@ -198,12 +166,15 @@ def resolve_expr(node, env):
     elif isinstance(node, ast.Name):
         if node.id in env:
             expr, dynamic = env[node.id]
+            # If the assigned expression or any sub-node contains a function call,
+            # return Var(node.id)
+            if contains_call(expr):
+                return Var(node.id)
             if dynamic:
                 return Var(node.id)
             else:
                 return resolve_expr(expr, env)
-        else:
-            return Var(node.id)
+        return Var(node.id)
     else:
         try:
             s = ast.unparse(node)
@@ -214,13 +185,6 @@ def resolve_expr(node, env):
 # --- The main grammar() function ---
 
 def grammar(var_value):
-    """
-    To be called at the end of a function.
-    This function retrieves the caller’s source, parses it, and:
-      1. Identifies the target variable by matching its value.
-      2. Collects all assignments to that variable.
-      3. Simulates the chain of string operations.
-    """
     frame = inspect.currentframe().f_back
     try:
         source = inspect.getsource(frame.f_code)
@@ -230,7 +194,6 @@ def grammar(var_value):
     tree = ast.parse(source)
     env = build_env_with_flags(tree)
     
-    # Heuristically find the target variable by comparing evaluated assignments.
     target_var = None
     for name, (expr, _) in env.items():
         if expr is None:
@@ -244,7 +207,6 @@ def grammar(var_value):
             target_var = name
             break
     if target_var is None:
-        # Fallback: check f_locals.
         for name in frame.f_locals:
             if frame.f_locals[name] == var_value:
                 target_var = name
@@ -252,18 +214,16 @@ def grammar(var_value):
         if target_var is None:
             return "<could not resolve variable>"
     
-    # Collect assignments for the target variable.
     assignments = collect_assignments(tree, target_var)
     if assignments:
-        chain = simulate_chain(target_var, assignments, env)
-        return chain
+        return simulate_chain(target_var, assignments, env)
     else:
         expr, dynamic = env.get(target_var, (None, True))
         if expr is None:
             return Var(target_var)
         return resolve_expr(expr, env)
 
-# --- Example usage and test cases ---
+# --- Test Cases ---
 
 def old_test_cases():
     # Example 1: f-string with concatenation (static assignment)
@@ -308,7 +268,7 @@ def new_test_cases():
     # Example 6: variable updated in a for loop then updated outside (chain simulation)
     def example6():
         s = "start"
-        a = "ba"
+        a = "a"
         for i in range(2):
             s = s + " loop"
         s = s + "end"
@@ -316,20 +276,20 @@ def new_test_cases():
         print("Example6 grammar(s):", grammar(s))
     example6()
 
-    def example7():
-        s = "start"
-        with open(".gitignore", "r") as f:
-            a = f.read().split("\n")[0]
-        
-        for i in range(2):
-            s = s + " loop"
-        s = s + "end"
-        s = s + a
-        print("Example7 grammar(s):", grammar(s))
-    example7()
+def example7():
+    s = "start"
+    with open(".gitignore", "r") as f:
+        a = f.read().split("\n")[0]
+    for i in range(2):
+        s = s + " loop"
+    s = s + "end"
+    s = s + a
+    print("Example7 grammar(s):", grammar(s))
 
 if __name__ == "__main__":
     print("=== Old Test Cases ===")
     old_test_cases()
     print("\n=== New Test Cases ===")
     new_test_cases()
+    print("\n=== Example 7 ===")
+    example7()

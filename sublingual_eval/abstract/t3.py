@@ -79,14 +79,14 @@ def contains_call(node):
     return False
 
 # --- Helper to decide if an AST node is "naive" ---
-# Naive definitions include constants, simple concatenations, or f-strings.
+# For BinOp with Add, it is considered naive only if both operands are naive.
 def is_naive(node):
     if isinstance(node, ast.Constant):
         return True
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return True
     if isinstance(node, ast.JoinedStr):
         return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return is_naive(node.left) and is_naive(node.right)
     return False
 
 # --- Environment Builder (used for non-target variable resolution) ---
@@ -144,22 +144,41 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
         _seen = _seen | {node.id}
         if node.id in env:
             value_node, is_dynamic = env[node.id]
-            # Do not apply InferredVar if the definition uses % formatting
-            # or if it is a call to format
-            if not (isinstance(value_node, ast.BinOp) and isinstance(value_node.op, ast.Mod)) \
-               and not (isinstance(value_node, ast.Call) and isinstance(value_node.func, ast.Attribute) and value_node.func.attr == "format") \
-               and not is_naive(value_node):
+            
+            # For control flow (is_dynamic), we want Var unless it's a complex computation
+            if is_dynamic:
+                # For simple string operations in control flow, use Var
+                if isinstance(value_node, (ast.BinOp, ast.Call, ast.JoinedStr)):
+                    return Var(node.id)
+                # For other operations in control flow with available value, use InferredVar
                 if f_locals and node.id in f_locals:
                     return InferredVar(node.id, f_locals[node.id])
-            if not is_dynamic:
-                return resolve_expr(value_node, env, _seen, f_locals)
+                return Var(node.id)
+            
+            # For function calls (not in control flow), use InferredVar if available
+            if contains_call(value_node) and f_locals and node.id in f_locals:
+                # Skip if it's a format() call
+                if isinstance(value_node, ast.Call) and isinstance(value_node.func, ast.Attribute) and value_node.func.attr == "format":
+                    return resolve_expr(value_node, env, _seen, f_locals)
+                return InferredVar(node.id, f_locals[node.id])
+            
+            # For non-dynamic, non-call expressions, resolve normally
+            return resolve_expr(value_node, env, _seen, f_locals)
         return Var(node.id)
 
-    if isinstance(node, ast.Constant):  # Handle all constants, not just strings
-        return Literal(str(node.value))  # Convert numbers to strings
+    if isinstance(node, ast.Constant):
+        return Literal(str(node.value))
 
     if isinstance(node, ast.BinOp):
         if isinstance(node.op, ast.Add):
+            # If either operand involves a function call, we should get the runtime value
+            if contains_call(node):
+                # Try to find this expression's variable name in the environment
+                for var_name, (var_node, is_dynamic) in env.items():
+                    if (ast.dump(var_node) == ast.dump(node) and 
+                        f_locals and var_name in f_locals):
+                        return InferredVar(var_name, f_locals[var_name])
+            # Otherwise handle as normal concatenation
             return Concat(
                 resolve_expr(node.left, env, _seen, f_locals),
                 resolve_expr(node.right, env, _seen, f_locals)
@@ -184,6 +203,38 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
             s = "<call>"
         return Var(s)
     elif isinstance(node, ast.JoinedStr):
+        # Check if this f-string contains any complex expressions
+        has_complex_expr = False
+        
+        # First check if this JoinedStr is assigned to a variable in a complex context
+        for var_name, (var_node, is_dynamic) in env.items():
+            if (ast.dump(var_node) == ast.dump(node) and 
+                var_name in f_locals and
+                is_dynamic):
+                return InferredVar(var_name, f_locals[var_name])
+        
+        # Then check individual expressions within the f-string
+        for value in node.values:
+            if isinstance(value, ast.FormattedValue):
+                if (isinstance(value.value, (ast.IfExp, ast.Call, ast.GeneratorExp, ast.ListComp, ast.SetComp, ast.DictComp)) or 
+                    contains_call(value.value)):
+                    has_complex_expr = True
+                    break
+        
+        # If we have complex expressions and f_locals is available, use InferredVar
+        if has_complex_expr and f_locals:
+            # Try to find this expression's variable name in the environment
+            for var_name, (var_node, is_dynamic) in env.items():
+                if (ast.dump(var_node) == ast.dump(node) and 
+                    var_name in f_locals):
+                    return InferredVar(var_name, f_locals[var_name])
+            
+            # If we couldn't find the exact variable, look for any variable with matching value
+            for var_name, value in f_locals.items():
+                if isinstance(value, str) and value == ast.unparse(node):
+                    return InferredVar(var_name, value)
+        
+        # Otherwise handle normally
         fmt_parts = []
         args = []
         for value in node.values:

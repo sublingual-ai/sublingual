@@ -7,7 +7,7 @@ setup(
     author="Matthew Tang and Dylan Bowman",
     author_email="founders@sublingual.ai",
     description="No-code LLM production app evals.",
-    url="https://github.com/sublingual-ai/sublingual-eval",
+    url="https://github.com/sublingual-ai/sublingual",
     packages=find_packages(),
     entry_points={
         "console_scripts": [

@@ -1,15 +1,22 @@
-# Sublingual LLM Observability and Evaluation
+# 🐍 🔍 Sublingual 
 
-Log, observe, and evaluate outputs without changing any code.
-Avoid the hassle of integrating the logging and changing your code.
-Built by lazy developers, for lazy developers.
+😴 Zero code LLM observability and evals 😴
 
 ## Get started instantly
-```bash
-pip install subl
-subl <your_script.py>
-subl server
-```
+1. Install:
+    ```bash
+    pip install subl
+    ``` 
+
+2. Run your script as usual with `subl` instead of `python`.
+    ```bash
+    subl <your_script.py>
+    ```
+
+3. Pull up the dashboard:
+    ```bash
+    subl server
+    ```
 
 ## Current support
  🤖 OpenAI Client (Async + Sync)

@@ -183,7 +183,6 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
                     value = f_locals[node.id]
                     if value is not None:
                         return InferredVar(node.id, value)
-                    # Fall through to Var if value is None
                 return Var(node.id)
             
             # For non-dynamic, non-call expressions, resolve normally
@@ -193,7 +192,6 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
             value = f_locals[node.id]
             if value is not None:
                 return InferredVar(node.id, value)
-            # Fall through to Var if value is None
         return Var(node.id)
 
     if isinstance(node, ast.Constant):
@@ -281,7 +279,7 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
         # Handle function parameters - use InferredVar if we have the value
         if f_locals and node.arg in f_locals:
             return InferredVar(node.arg, f_locals[node.arg])
-        return Var(node.arg)  # Fallback if we don't have the value
+        return Var(node.arg)
     else:
         try:
             s = ast.unparse(node)
@@ -316,7 +314,6 @@ def process_dict(dict_node, env, f_locals=None):
                 try:
                     result[key_val] = ast.literal_eval(value)
                 except:
-                    # Handle cases where the value can't be evaluated
                     if f_locals and isinstance(value, ast.Name) and value.id in f_locals:
                         result[key_val] = f_locals[value.id]
         except Exception:
@@ -324,11 +321,11 @@ def process_dict(dict_node, env, f_locals=None):
     return result
 
 def process_messages(arg_node, env, f_locals=None):
+    # FIX: if arg_node is a Name, replace it with its assignment expression
     if isinstance(arg_node, ast.Name) and arg_node.id in env:
-        expr, _ = env[arg_node.id]
-        if not contains_call(expr):
-            arg_node = expr
-    
+        value_node, _ = env[arg_node.id]
+        arg_node = value_node
+
     if isinstance(arg_node, ast.List):
         result = []
         for elt in arg_node.elts:
@@ -338,11 +335,11 @@ def process_messages(arg_node, env, f_locals=None):
                 expr, _ = env[elt.id]
                 if isinstance(expr, ast.Dict):
                     result.append(process_dict(expr, env, f_locals=f_locals))
-        return result if result else "<unsupported input type>"
+        return result if result else f"<Expected non-empty list of message dictionaries, got empty list>"
     elif isinstance(arg_node, ast.Dict):
         result = process_dict(arg_node, env, f_locals=f_locals)
-        return result if result else "<unsupported input type>"
-    return "<unsupported input type>"
+        return result if result else f"<Expected valid message dictionary with 'content' field, got dictionary without content>"
+    return f"<Expected a list of message dictionaries or a single message dictionary, got {type(arg_node).__name__}>"
 
 def find_call(tree, func_name, lineno):
     finder = CallFinder(func_name)

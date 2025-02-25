@@ -183,7 +183,6 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
                     value = f_locals[node.id]
                     if value is not None:
                         return InferredVar(node.id, value)
-                    # Fall through to Var if value is None
                 return Var(node.id)
             
             # For non-dynamic, non-call expressions, resolve normally
@@ -193,7 +192,6 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
             value = f_locals[node.id]
             if value is not None:
                 return InferredVar(node.id, value)
-            # Fall through to Var if value is None
         return Var(node.id)
 
     if isinstance(node, ast.Constant):
@@ -281,7 +279,7 @@ def resolve_expr(node, env, _seen=None, f_locals=None):
         # Handle function parameters - use InferredVar if we have the value
         if f_locals and node.arg in f_locals:
             return InferredVar(node.arg, f_locals[node.arg])
-        return Var(node.arg)  # Fallback if we don't have the value
+        return Var(node.arg)
     else:
         try:
             s = ast.unparse(node)
@@ -316,7 +314,6 @@ def process_dict(dict_node, env, f_locals=None):
                 try:
                     result[key_val] = ast.literal_eval(value)
                 except:
-                    # Handle cases where the value can't be evaluated
                     if f_locals and isinstance(value, ast.Name) and value.id in f_locals:
                         result[key_val] = f_locals[value.id]
         except Exception:
@@ -324,11 +321,11 @@ def process_dict(dict_node, env, f_locals=None):
     return result
 
 def process_messages(arg_node, env, f_locals=None):
+    # FIX: if arg_node is a Name, replace it with its assignment expression
     if isinstance(arg_node, ast.Name) and arg_node.id in env:
-        expr, _ = env[arg_node.id]
-        if not contains_call(expr):
-            arg_node = expr
-    
+        value_node, _ = env[arg_node.id]
+        arg_node = value_node
+
     if isinstance(arg_node, ast.List):
         result = []
         for elt in arg_node.elts:
@@ -455,7 +452,7 @@ def grammar(var_value):
             return [{"role": msg.get("role", "user"), 
                      "content": Literal(msg["content"]) if "content" in msg else None} 
                     for msg in var_value]
-        return f"<Expected a dictionary or list of dictionaries, got {type(var_value).__name__}>"
+        return "<unsupported input type>"
     return process_messages(arg_node, env, f_locals=caller_frame.f_locals)
 
 def convert_grammar_to_dict(grammar_result):

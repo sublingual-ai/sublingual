@@ -277,13 +277,40 @@ class TestGrammar(unittest.TestCase):
         self.assertListEqual(result, expected)
 
     def test_parameter_passing(self, string="hi"):
-        """Test parameter passing to make sure we store as Var"""
-        
+        """Test parameter passing to make sure we store as InferredVar"""
         result = grammar([{"role": "user", "content": string}])
         expected = [{
             "role": "user",
-            "content": Var("string")
+            "content": InferredVar("string", "hi")
         }]
+        self.assertListEqual(result, expected)
+
+    def test_openai_messages_variable(self):
+        """Test handling of messages variable passed to OpenAI completion"""
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "Hello"}
+        ]
+        
+        result = grammar(messages)
+        expected = [
+            {"role": "system", "content": Literal("You are a helpful assistant")},
+            {"role": "user", "content": Literal("Hello")}
+        ]
+        self.assertListEqual(result, expected)
+
+    def test_openai_messages_dynamic(self):
+        """Test handling of dynamically built messages list"""
+        messages = []
+        messages.append({"role": "system", "content": "You are a helpful assistant"})
+        if True:
+            messages.append({"role": "user", "content": "Hello"})
+        
+        result = grammar(messages)
+        expected = [
+            {"role": "system", "content": Literal("You are a helpful assistant")},
+            {"role": "user", "content": Literal("Hello")}
+        ]
         self.assertListEqual(result, expected)
 
 if __name__ == '__main__':

@@ -256,7 +256,7 @@ class TestGrammar(unittest.TestCase):
 
     def test_gitignore_first_line(self):
         """Test reading first line from .gitignore file"""
-        with open('.gitignore', 'r') as f:
+        with open('../.gitignore', 'r') as f:
             first_line = f.readline().strip()
             second_line = f.readline().strip()
         

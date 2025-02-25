@@ -338,11 +338,11 @@ def process_messages(arg_node, env, f_locals=None):
                 expr, _ = env[elt.id]
                 if isinstance(expr, ast.Dict):
                     result.append(process_dict(expr, env, f_locals=f_locals))
-        return result if result else "<unsupported input type>"
+        return result if result else f"<Expected non-empty list of message dictionaries, got empty list>"
     elif isinstance(arg_node, ast.Dict):
         result = process_dict(arg_node, env, f_locals=f_locals)
-        return result if result else "<unsupported input type>"
-    return "<unsupported input type>"
+        return result if result else f"<Expected valid message dictionary with 'content' field, got dictionary without content>"
+    return f"<Expected a list of message dictionaries or a single message dictionary, got {type(arg_node).__name__}>"
 
 def find_call(tree, func_name, lineno):
     finder = CallFinder(func_name)
@@ -455,7 +455,7 @@ def grammar(var_value):
             return [{"role": msg.get("role", "user"), 
                      "content": Literal(msg["content"]) if "content" in msg else None} 
                     for msg in var_value]
-        return "<unsupported input type>"
+        return f"<Expected a dictionary or list of dictionaries, got {type(var_value).__name__}>"
     return process_messages(arg_node, env, f_locals=caller_frame.f_locals)
 
 def convert_grammar_to_dict(grammar_result):

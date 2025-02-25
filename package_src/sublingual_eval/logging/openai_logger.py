@@ -44,10 +44,22 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
     stack_info = []
 
     project_root = os.getcwd()
+    excluded_patterns = [
+        '<frozen',  # Catches '<frozen runpy>' and similar
+        'site-packages',  # Excludes installed packages
+        'dist-packages',  # Excludes system packages on some Linux systems
+        'lib/python',     # Excludes Python standard library
+    ]
+
     for frame_info in reversed(stack):
         filename = frame_info.filename
         abs_filename = os.path.abspath(filename)
 
+        # Skip frames matching excluded patterns
+        if any(pattern in filename for pattern in excluded_patterns):
+            continue
+
+        # Skip frames outside project directory
         if not abs_filename.startswith(project_root):
             continue
 

@@ -1,20 +1,15 @@
 import { Badge } from "@/components/ui/badge";
-import { Bot, User, Wrench, Calculator, Search, Database, Code2 } from "lucide-react";
-import { Message, LLMRun, ToolCall, Token } from "@/types/logs";
+import { Bot, User, Wrench, Code2 } from "lucide-react";
+import { Message, LLMRun, ToolCall } from "@/types/logs";
 import React, { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { parseGrammarFormat, validateParsing, parseGrammarResult, GrammarNode } from "@/utils/grammarParser";
-import { TokenizedText } from "@/components/TokenizedText";
+import { parseGrammarFormat, GrammarNode } from "@/utils/grammarParser";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { GrammarTree } from "@/components/GrammarTree";
 
 interface LLMInteractionProps {
   run: LLMRun;
-}
-
-interface ToolCallArgs {
-  [key: string]: any;
 }
 
 interface FullMessagePopupProps {
@@ -198,7 +193,20 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     }
   };
 
-  const renderContent = (content: any) => {
+  // Helper function to extract all tool calls for a message
+  const getToolCalls = (msg: Message, msgIndex: number) => {
+    // Tool calls directly in the message
+    const messageToolCalls = msg.tool_calls || [];
+    
+    // Tool calls in the response - show them with the user message that triggered them
+    const responseToolCalls = msg.role === 'user' && msgIndex === run.messages.length - 1
+      ? (run.response?.choices?.[0]?.message?.tool_calls || [])
+      : [];
+    
+    return [...messageToolCalls, ...responseToolCalls];
+  };
+
+  const renderContent = (content: any, msg: Message) => {
     if (!content) return null;
 
     if (Array.isArray(content)) {
@@ -242,10 +250,10 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
       
       <div className="space-y-2">
         {run.messages?.map((msg, msgIndex) => {
-          const messageToolCalls = msg.role === 'assistant' && msg.tool_calls 
-            ? msg.tool_calls.map((toolCall, index) => ({ toolCall, index }))
-            : [];
-
+          const allToolCalls = getToolCalls(msg, msgIndex);
+          const isLastMessage = msgIndex === run.messages.length - 1;
+          const hasResponse = isLastMessage && (run.response?.choices?.[0]?.message?.tool_calls?.length > 0 || run.response_texts?.length > 0);
+          
           return (
             <React.Fragment key={msgIndex}>
               <div className={`flex flex-col p-3 rounded-lg ${
@@ -307,34 +315,66 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                   {grammarTrees[msgIndex] ? (
                     <GrammarTree node={grammarTrees[msgIndex]} />
                   ) : (
-                    renderContent(msg.content)
+                    renderContent(msg.content, msg)
                   )}
                 </div>
               </div>
 
-              {messageToolCalls.length > 0 && messageToolCalls.map(({ toolCall, index }, toolCallIndex) => (
-                <div key={toolCallIndex} className="ml-6">
-                  <Badge variant="outline" className="mb-2">Tool Call [{index + 1}]</Badge>
-                  <ToolCallDisplay toolCall={toolCall} />
+              {/* Show tool calls from the message itself */}
+              {msg.tool_calls && msg.tool_calls.length > 0 && (
+                <div className="ml-6 space-y-2">
+                  {msg.tool_calls.map((toolCall, index) => (
+                    <div key={index}>
+                      <Badge variant="outline" className="mb-2">
+                        {msg.role === 'assistant' ? 'Assistant Tool Call' : 'Tool Call'} [{index + 1}]
+                      </Badge>
+                      <ToolCallDisplay toolCall={toolCall} />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
 
-              {msgIndex === run.messages.length - 1 && !messageToolCalls.length && run.response_texts?.map((responseText, index) => (
-                <div key={index} className="flex flex-col p-3 rounded-lg bg-primary-50">
-                  <div className="flex items-center gap-2">
-                    <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                    <span className="text-xs text-primary-600">Response [{index}]</span>
-                  </div>
-                  <div 
-                    className={`text-sm whitespace-pre-wrap break-words mt-2 ${
-                      responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
-                    }`}
-                    onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
-                  >
-                    {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
-                  </div>
-                </div>
-              ))}
+              {/* Show response box with tool calls and/or response texts */}
+              {hasResponse && (
+                <>
+                  {/* Response box for response texts */}
+                  {run.response_texts && run.response_texts.length > 0 && (
+                    <div className="flex flex-col p-3 rounded-lg bg-primary-50">
+                      <div className="flex items-center gap-2">
+                        <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                        <span className="text-xs text-primary-600">Response</span>
+                      </div>
+                      
+                      {/* Show response texts */}
+                      {run.response_texts.map((responseText, index) => (
+                        <div 
+                          key={index}
+                          className={`text-sm whitespace-pre-wrap break-words mt-2 ${
+                            responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
+                          }`}
+                          onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
+                        >
+                          {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Show tool calls from the response */}
+                  {run.response?.choices?.[0]?.message?.tool_calls && (
+                    <div className="ml-6 space-y-2">
+                      {run.response.choices[0].message.tool_calls.map((toolCall, index) => (
+                        <div key={index}>
+                          <Badge variant="outline" className="mb-2">
+                            Response Tool Call [{index + 1}]
+                          </Badge>
+                          <ToolCallDisplay toolCall={toolCall} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </React.Fragment>
           );
         })}

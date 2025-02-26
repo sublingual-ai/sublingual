@@ -16,6 +16,33 @@ import config
 
 router = Blueprint('api', __name__)
 
+# Add near the top with other constants
+DEFAULT_METRICS = {
+    "correctness": {
+        "label": "Correctness",
+        "description": "Evaluates the accuracy and correctness of the response"
+    },
+    "system_prompt_obedience": {
+        "label": "System Prompt Obedience",
+        "description": "Measures how well the response follows the system prompt"
+    },
+    "user_sentiment": {
+        "label": "User Sentiment",
+        "description": "Analyzes the sentiment of user interactions"
+    }
+}
+
+def initialize_metrics():
+    """Initialize the metrics configuration file if it doesn't exist."""
+    metrics_dir = os.path.join(config.project_dir, "metrics")
+    metrics_file = os.path.join(metrics_dir, "metrics.json")
+    
+    if not os.path.exists(metrics_dir):
+        os.makedirs(metrics_dir)
+    
+    if not os.path.exists(metrics_file):
+        with open(metrics_file, 'w') as f:
+            json.dump(DEFAULT_METRICS, f, indent=2)
 
 @router.route("/health")
 def health():
@@ -81,7 +108,10 @@ def get_log():
 
 @router.route("/get_available_logs")
 def get_available_logs():
-    files = [os.path.join(config.log_dir, f) for f in os.listdir(config.log_dir)]
+    log_dir = os.path.join(config.project_dir, "logs")
+    if not os.path.exists(log_dir):
+        return jsonify([])
+    files = [os.path.join(log_dir, f) for f in os.listdir(log_dir)]
     # Get creation time for each file and sort descending
     files_with_time = [(f, os.path.getctime(f)) for f in files]
     files_with_time.sort(key=lambda x: x[1], reverse=True)
@@ -129,5 +159,18 @@ def delete_log():
 
         os.remove(file_path)
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/metrics", methods=['GET'])
+def get_metrics():
+    metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
+    try:
+        with open(metrics_file, 'r') as f:
+            return jsonify(json.load(f))
+    except FileNotFoundError:
+        initialize_metrics()
+        return jsonify(DEFAULT_METRICS)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

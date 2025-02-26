@@ -42,11 +42,14 @@ interface Evaluation {
     status: EvaluationStatus;
 }
 
-const CRITERIA_LABELS: Record<EvaluationCriteria, string> = {
-    correctness: "Correctness",
-    system_prompt_obedience: "System Prompt Obedience",
-    user_sentiment: "User Sentiment"
-};
+interface Metric {
+    label: string;
+    description: string;
+}
+
+interface Metrics {
+    [key: string]: Metric;
+}
 
 interface LoadingState {
     [runId: string]: Set<string>; // Set of criteria currently loading
@@ -86,13 +89,15 @@ const getRunId = (run: LLMRun) => {
 const MetricsSummary = ({
     filteredRuns,
     evaluations,
-    selectedCriteria
+    selectedCriteria,
+    metrics
 }: {
     filteredRuns: LLMRun[];
     evaluations: Record<string, Evaluation[]>;
     selectedCriteria: EvaluationCriteria[];
+    metrics: Metrics;
 }) => {
-    const metrics = useMemo(() => {
+    const metricsData = useMemo(() => {
         return selectedCriteria.map(criteria => {
             // Only include evaluations for filtered runs
             const filteredRunIds = new Set(filteredRuns.map(getRunId));
@@ -122,10 +127,10 @@ const MetricsSummary = ({
 
     return (
         <div className="grid grid-cols-1 gap-3 mt-4">
-            {metrics.map(metric => (
+            {metricsData.map(metric => (
                 <div key={metric.criteria} className="flex items-center gap-4">
                     <div className="w-40 text-sm text-gray-600">
-                        {CRITERIA_LABELS[metric.criteria]}
+                        {metrics[metric.criteria].label}
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between text-sm mb-1">
@@ -161,6 +166,33 @@ export function MetricsView({ runs }: MetricsViewProps) {
     const [loadingStates, setLoadingStates] = useState<LoadingState>({});
     const [filters, setFilters] = useState<Filter[]>([]);
     const { toast } = useToast();
+    const [metrics, setMetrics] = useState<Metrics>({});
+
+    // Add this useEffect to fetch metrics
+    useEffect(() => {
+        const fetchMetrics = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/metrics`);
+                if (!response.ok) throw new Error('Failed to fetch metrics');
+                const data = await response.json();
+                setMetrics(data);
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to load evaluation metrics",
+                });
+            }
+        };
+        
+        fetchMetrics();
+    }, []);
+
+    // Replace CRITERIA_LABELS references with metrics state
+    const getCriteriaLabel = (criteria: string) => {
+        return metrics[criteria]?.label || criteria;
+    };
 
     // Get filtered runs based on filters
     const filteredRuns = useMemo(() => {
@@ -435,7 +467,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                             variant="outline"
                             className={`text-xs ${badgeStyle}`}
                         >
-                            {CRITERIA_LABELS[criteria]}: {displayValue()}
+                            {getCriteriaLabel(criteria)}: {displayValue()}
                         </Badge>
                     );
                 })}
@@ -495,14 +527,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                             Evaluation Criteria
                                         </label>
                                         <div className="flex gap-2">
-                                            {(Object.keys(CRITERIA_LABELS) as EvaluationCriteria[]).map((criteria) => (
+                                            {Object.keys(metrics).map((criteria) => (
                                                 <Badge
                                                     key={criteria}
                                                     variant={selectedCriteria.includes(criteria) ? "default" : "outline"}
                                                     className="cursor-pointer"
                                                     onClick={() => handleCriteriaChange(criteria)}
                                                 >
-                                                    {CRITERIA_LABELS[criteria]}
+                                                    {metrics[criteria].label}
                                                 </Badge>
                                             ))}
                                         </div>
@@ -525,6 +557,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                             filteredRuns={filteredRuns}
                                             evaluations={evaluations}
                                             selectedCriteria={selectedCriteria}
+                                            metrics={metrics}
                                         />
                                     </div>
                                 </div>
@@ -535,14 +568,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                     Evaluation Criteria
                                 </label>
                                 <div className="flex gap-2">
-                                    {(Object.keys(CRITERIA_LABELS) as EvaluationCriteria[]).map((criteria) => (
+                                    {Object.keys(metrics).map((criteria) => (
                                         <Badge
                                             key={criteria}
                                             variant={selectedCriteria.includes(criteria) ? "default" : "outline"}
                                             className="cursor-pointer"
                                             onClick={() => handleCriteriaChange(criteria)}
                                         >
-                                            {CRITERIA_LABELS[criteria]}
+                                            {metrics[criteria].label}
                                         </Badge>
                                     ))}
                                 </div>

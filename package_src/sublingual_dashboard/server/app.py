@@ -14,6 +14,7 @@ from evaluations.simple_evaluations import (
 )
 import config
 import logging
+from api_routes import router, initialize_metrics  # Add initialize_metrics to import
 
 app = Flask(__name__)
 CORS(app)
@@ -43,10 +44,10 @@ if __name__ == "__main__":
         "--port", type=int, default=5360, help="Port number for the Flask server"
     )
     parser.add_argument(
-        "--log-dir",
+        "--project-dir",
         type=str,
-        default=".sublingual/logs",
-        help="Directory to load .jsonl log files from",
+        default=".sublingual",
+        help="Directory containing the Sublingual project files",
     )
     parser.add_argument(
         "--env",
@@ -65,9 +66,13 @@ if __name__ == "__main__":
         help="Run the Flask server in verbose mode",
     )
     args = parser.parse_args()
-    # Use the absolute path as provided
-    config.set_log_dir(args.log_dir)
 
+    # Set up the project directory in config
+    config.set_project_dir(args.project_dir)
+    
+    # Initialize metrics configuration
+    initialize_metrics()
+    
     # Initialize the OpenAI client
     initialize_client(args.env)
 

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log-dir",
         type=str,
-        default=".",
+        default=".sublingual/logs",
         help="Directory to load .jsonl log files from",
     )
     parser.add_argument(

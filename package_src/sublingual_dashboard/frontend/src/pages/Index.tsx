@@ -11,8 +11,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { MetricsView } from "@/components/MetricsView";
 import { useLogs } from '@/hooks/useLogs';
+import { DashboardView } from "@/components/DashboardView";
+import { LayoutDashboard } from "lucide-react";
 
-type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics';
+type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics' | 'dashboard';
 
 const Dashboard = () => {
   const [view, setView] = useState<ViewType>(() => {
@@ -37,14 +39,14 @@ const Dashboard = () => {
     <DashboardLayout>
       <div className="h-full flex flex-col">
         <div className="flex-shrink-0 mb-4 flex justify-end space-x-2">
-          <Button
-            variant={view === 'runs' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setView('runs')}
-          >
-            <ListTree className="w-4 h-4 mr-2" />
-            Runs View
-          </Button>
+        <Button
+          variant={view === 'dashboard' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setView('dashboard')}
+        >
+          <LayoutDashboard className="w-4 h-4 mr-2" />
+          Dashboard
+        </Button>
           <Button
             variant={view === 'metrics' ? 'default' : 'outline'}
             size="sm"
@@ -78,6 +80,7 @@ const Dashboard = () => {
         </div>
         
         <div className="flex-1 min-h-0">
+          {view === 'dashboard' && <DashboardView runs={runs} />}
           {view === 'runs' && <RunsList runs={runs}  />}
           {view === 'sessions' && <SessionsList runs={runs} />}
           {view === 'metrics' && <MetricsView runs={runs} />}

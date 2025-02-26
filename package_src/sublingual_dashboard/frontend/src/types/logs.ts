@@ -67,14 +67,12 @@ export interface LLMRun {
     model: string;
     usage: {
       total_tokens: number;
-      // ... other usage fields
+      completion_ms?: number;
     };
     choices: Choice[];
-    // ... other response fields
   };
   usage: {
     total_tokens: number;
-    // ... other usage fields
   };
   timestamp: number;
   stack_trace?: StackFrame[];

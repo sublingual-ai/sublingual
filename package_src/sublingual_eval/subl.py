@@ -2,7 +2,8 @@
 
 import argparse
 import sys
-from sublingual_eval.wrapper_exec import main as wrapper_main
+from sublingual_eval.wrapper_exec import main as wrapper_python
+from sublingual_eval.wrapper_generic import main as wrapper_generic
 from sublingual_dashboard.run_servers import main as server_main
 import os
 
@@ -44,7 +45,9 @@ def main():
         server_main(args)
     else:
         # Handle script execution - let wrapper_main handle the args
-        wrapper_main()
+
+        # wrapper_python() # Old wrapper with custom python handling
+        wrapper_generic()
 
 
 if __name__ == "__main__":

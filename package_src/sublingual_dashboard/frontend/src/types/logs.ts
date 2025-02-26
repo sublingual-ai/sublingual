@@ -88,6 +88,7 @@ export interface LLMRun {
     n: number;
   };
   extra_info: Record<string, any>;
+  duration_ms: number;
 }
 
 export interface SessionRow {

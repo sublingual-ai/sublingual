@@ -7,12 +7,13 @@ import { MessageSquare, Zap, Clock, Hash, ChevronRight } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LLMInteraction } from "@/components/LLMInteraction";
+import { formatElapsedTime } from "@/utils/format";
 
 interface DashboardViewProps {
   runs: LLMRun[];
 }
 
-type MetricType = 'calls' | 'tokens' | 'response_time';
+type MetricType = 'calls' | 'tokens' | 'duration';
 type TimeRange = '1h' | '24h' | '7d' | '30d';
 type BucketSize = Record<TimeRange, number>;
 
@@ -27,7 +28,7 @@ interface DataPoint {
   timestamp: number;
   calls: number;
   tokens: number;
-  response_time: number;
+  duration: number;
 }
 
 export function DashboardView({ runs }: DashboardViewProps) {
@@ -50,7 +51,6 @@ export function DashboardView({ runs }: DashboardViewProps) {
     const minTime = now - rangeMs;
     const maxTime = now;
 
-    // Align the starting bucket to a multiple of msPerBucket
     const bucketStart = Math.floor(minTime / msPerBucket) * msPerBucket;
 
     const buckets = new Map<number, DataPoint>();
@@ -61,47 +61,38 @@ export function DashboardView({ runs }: DashboardViewProps) {
         timestamp: t,
         calls: 0,
         tokens: 0,
-        response_time: 0
+        duration: 0
       });
     }
 
     // Fill buckets with run data
     runs.forEach(run => {
       const timestamp = run.timestamp * 1000;
-      if (timestamp < minTime || timestamp > maxTime) return; // only include points in our range
+      if (timestamp < minTime || timestamp > maxTime) return;
 
-      // Bucket by flooring to the nearest bucket start
       const bucketTime = Math.floor(timestamp / msPerBucket) * msPerBucket;
       const bucket = buckets.get(bucketTime) || {
         timestamp: bucketTime,
         calls: 0,
         tokens: 0,
-        response_time: 0
+        duration: 0
       };
 
       bucket.calls += 1;
       bucket.tokens += run.response.usage.total_tokens;
-      if ('completion_ms' in run.response.usage) {
-        bucket.response_time += run.response.usage.completion_ms;
+      if ('duration_ms' in run) {
+        bucket.duration = ((bucket.duration * (bucket.calls - 1)) + run.duration_ms) / bucket.calls;
       }
       buckets.set(bucketTime, bucket);
     });
 
-    // Calculate averages for response_time where applicable
-    buckets.forEach(bucket => {
-      if (bucket.calls > 0) {
-        bucket.response_time /= bucket.calls;
-      }
-    });
-
-    // Return all buckets as sorted data points
     return Array.from(buckets.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [runs, timeRange, selectedMetric]);
 
   const yAxisLabel = {
     calls: 'Number of Calls',
     tokens: 'Total Tokens',
-    response_time: 'Avg Response Time (ms)'
+    duration: 'Average Duration'
   }[selectedMetric];
 
   const stats = useMemo(() => {
@@ -109,13 +100,13 @@ export function DashboardView({ runs }: DashboardViewProps) {
     let totalTokens = 0;
     let totalCalls = runs.length;
     let totalSessions = new Set(runs.map(run => run.session_id || 'single')).size;
-    let avgResponseTime = 0;
+    let totalDuration = 0;
 
     runs.forEach(run => {
       models.add(run.response.model);
       totalTokens += run.response.usage.total_tokens;
-      if ('completion_ms' in run.response.usage) {
-        avgResponseTime += run.response.usage.completion_ms;
+      if ('duration_ms' in run) {
+        totalDuration += run.duration_ms;
       }
     });
 
@@ -124,7 +115,7 @@ export function DashboardView({ runs }: DashboardViewProps) {
       totalTokens,
       totalCalls,
       totalSessions,
-      avgResponseTime: totalCalls > 0 ? avgResponseTime / totalCalls : 0
+      avgDuration: totalCalls > 0 ? totalDuration / totalCalls : 0
     };
   }, [runs]);
 
@@ -167,12 +158,12 @@ export function DashboardView({ runs }: DashboardViewProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
+            <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {Math.round(stats.avgResponseTime)}ms
+              {formatElapsedTime(Math.round(stats.avgDuration))}
             </div>
           </CardContent>
         </Card>
@@ -200,7 +191,7 @@ export function DashboardView({ runs }: DashboardViewProps) {
                 <SelectContent>
                   <SelectItem value="calls">Number of Calls</SelectItem>
                   <SelectItem value="tokens">Total Tokens</SelectItem>
-                  <SelectItem value="response_time">Average Response Time</SelectItem>
+                  <SelectItem value="duration">Average Duration</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={timeRange} onValueChange={(value: TimeRange) => setTimeRange(value)}>
@@ -266,7 +257,10 @@ export function DashboardView({ runs }: DashboardViewProps) {
                       minute: '2-digit'
                     });
                   }}
-                  formatter={(value) => [value, selectedMetric === 'response_time' ? 'ms' : '']}
+                  formatter={(value) => [
+                    selectedMetric === 'duration' ? formatElapsedTime(Number(value)) : value,
+                    ''
+                  ]}
                   isAnimationActive={false}
                 />
                 <Line
@@ -306,18 +300,29 @@ export function DashboardView({ runs }: DashboardViewProps) {
                   return (
                     <div key={index} className="py-2">
                       <div 
-                        className="flex items-center justify-between mb-1 cursor-pointer hover:bg-gray-50 p-2 rounded-md"
+                        className={`flex items-center justify-between mb-1 cursor-pointer hover:bg-gray-50 p-2 rounded-md ${
+                          isExpanded ? 'bg-primary-50/50' : ''
+                        }`}
                         onClick={() => toggleRun(runId)}
                       >
-                        <div className="flex items-center space-x-2">
-                          <MessageSquare className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">
-                            {new Date(run.timestamp * 1000).toLocaleString()}
-                          </span>
+                        <div className="flex flex-col space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <MessageSquare className="w-4 h-4 text-gray-500" />
+                            <span className="text-xs text-gray-500">
+                              {new Date(run.timestamp * 1000).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs text-gray-600">
+                            <span className="text-primary-600 font-medium">{run.response.model}</span>
+                            <span>•</span>
+                            <span>{run.response.usage.total_tokens} tokens</span>
+                            <span>•</span>
+                            <span>{formatElapsedTime(run.duration_ms)}</span>
+                          </div>
                         </div>
                         <ChevronRight 
-                          className={`w-4 h-4 text-gray-500 transition-transform ${
-                            isExpanded ? 'rotate-90' : ''
+                          className={`w-4 h-4 transition-transform ${
+                            isExpanded ? 'text-primary-600 rotate-90' : 'text-gray-500'
                           }`}
                         />
                       </div>

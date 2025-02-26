@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageSquare, Zap, Clock, Hash, ChevronRight } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LLMInteraction } from "@/components/LLMInteraction";
 
@@ -220,11 +220,18 @@ export function DashboardView({ runs }: DashboardViewProps) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart 
                 data={chartData} 
-                margin={{ top: 20, right: 20, left: 35, bottom: 0 }}
+                margin={{ top: 20, right: 20, left: 35, bottom: 20 }}
+                height={160}
               >
+                <CartesianGrid 
+                  vertical={false}
+                  strokeDasharray="3 3"  // Make grid lines dashed
+                />
                 <XAxis 
                   dataKey="timestamp"
                   padding={{ right: 10 }}
+                  axisLine={true}
+                  tickLine={true}
                   tickFormatter={(timestamp) => {
                     const date = new Date(timestamp);
                     if (timeRange === '1h' || timeRange === '24h') {
@@ -245,6 +252,9 @@ export function DashboardView({ runs }: DashboardViewProps) {
                   tickFormatter={(value) => value.toLocaleString()}
                   scale="linear"
                   orientation="left"
+                  axisLine={true}
+                  tickLine={true}
+                  ticks={[0, Math.floor(chartData.reduce((max, point) => Math.max(max, point[selectedMetric]), 0) / 2), Math.max(...chartData.map(point => point[selectedMetric]))]}  // Force exactly 3 ticks: 0, middle, max
                 />
                 <Tooltip
                   labelFormatter={(timestamp) => {

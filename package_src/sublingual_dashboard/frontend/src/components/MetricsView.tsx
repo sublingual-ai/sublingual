@@ -397,6 +397,15 @@ export function MetricsView({ runs }: MetricsViewProps) {
         const isLoading = (criteria: string) =>
             loadingStates[runId]?.has(criteria) ?? false;
 
+        const getBadgeStyle = (criteria: string, rating: number) => {
+            if (criteria === 'correctness') {
+                if (rating >= 75) return 'bg-green-50 text-green-700';
+                if (rating >= 25) return 'bg-yellow-50 text-yellow-700';
+                if (rating >= 0) return 'bg-orange-50 text-orange-700';
+            }
+            return 'bg-primary-50 text-primary-700';
+        };
+
         return (
             <div className="flex gap-2">
                 {selectedCriteria.map((criteria) => {
@@ -414,14 +423,17 @@ export function MetricsView({ runs }: MetricsViewProps) {
                         return `${evaluation.rating}%`;
                     };
 
+                    const badgeStyle = evaluation?.status === 'evaluated' 
+                        ? getBadgeStyle(criteria, evaluation.rating)
+                        : evaluation?.status === 'evaluation_failed' 
+                            ? 'bg-red-50 text-red-700' 
+                            : 'text-gray-500';
+
                     return (
                         <Badge
                             key={criteria}
                             variant="outline"
-                            className={`text-xs ${evaluation?.status === 'evaluated' ? 'bg-primary-50 text-primary-700' :
-                                evaluation?.status === 'evaluation_failed' ? 'bg-red-50 text-red-700' :
-                                    'text-gray-500'
-                                }`}
+                            className={`text-xs ${badgeStyle}`}
                         >
                             {CRITERIA_LABELS[criteria]}: {displayValue()}
                         </Badge>

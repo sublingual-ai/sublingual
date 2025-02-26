@@ -32,11 +32,11 @@ const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
   }, [onClose]);
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       onClick={onClose}
     >
-      <div 
+      <div
         className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 flex flex-col"
         style={{ height: 'calc(100vh - 100px)' }}
         onClick={e => e.stopPropagation()}
@@ -46,7 +46,7 @@ const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
         </VisuallyHidden>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">Full Message</h3>
-          <button 
+          <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
           >
@@ -75,13 +75,13 @@ const MESSAGE_TRUNCATE_LENGTH = 500;
 
 function truncateContent(content: string, onClick: () => void) {
   if (content.length <= MESSAGE_TRUNCATE_LENGTH) return content;
-  
+
   const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
   const start = content.slice(0, halfLength);
   const end = content.slice(-halfLength);
-  
+
   return (
-    <div 
+    <div
       onClick={onClick}
       className="cursor-pointer hover:bg-gray-50 rounded-md p-2 -mx-2"
     >
@@ -162,7 +162,7 @@ const ToolCallDisplay = ({ toolCall }: { toolCall: ToolCall }) => {
 
 // Add helper function to check grammar validity
 const isValidGrammar = (grammarResult: any) => {
-  return grammarResult?.content && 
+  return grammarResult?.content &&
     typeof grammarResult.content === 'object' &&
     ['Format', 'Literal', 'Var', 'InferredVar', 'Concat'].includes(grammarResult.content.type);
 };
@@ -197,12 +197,12 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
   const getToolCalls = (msg: Message, msgIndex: number) => {
     // Tool calls directly in the message
     const messageToolCalls = msg.tool_calls || [];
-    
+
     // Tool calls in the response - show them with the user message that triggered them
     const responseToolCalls = msg.role === 'user' && msgIndex === run.messages.length - 1
       ? (run.response?.choices?.[0]?.message?.tool_calls || [])
       : [];
-    
+
     return [...messageToolCalls, ...responseToolCalls];
   };
 
@@ -247,18 +247,17 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           onClose={() => setSelectedContent(null)}
         />
       )}
-      
+
       <div className="space-y-2">
         {run.messages?.map((msg, msgIndex) => {
           const allToolCalls = getToolCalls(msg, msgIndex);
           const isLastMessage = msgIndex === run.messages.length - 1;
           const hasResponse = isLastMessage && (run.response?.choices?.[0]?.message?.tool_calls?.length > 0 || run.response_texts?.length > 0);
-          
+
           return (
             <React.Fragment key={msgIndex}>
-              <div className={`flex flex-col p-3 rounded-lg ${
-                msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
-              }`}>
+              <div className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
+                }`}>
                 <div className="flex items-center gap-2 justify-between">
                   <div className="flex items-center gap-2">
                     {msg.role === 'assistant' ? (
@@ -295,21 +294,21 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                       </>
                     )}
                   </div>
-                  
-                  {run.grammar_result?.[msgIndex] && 
-                   isValidGrammar(run.grammar_result[msgIndex]) && (
-                    <Button
-                      variant={grammarTrees[msgIndex] ? "secondary" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2"
-                      onClick={() => handleShowGrammar(msgIndex)}
-                    >
-                      <Code2 size={14} className="mr-1" />
-                      <span className="text-xs">
-                        {grammarTrees[msgIndex] ? "Hide Grammar" : "Show Grammar"}
-                      </span>
-                    </Button>
-                  )}
+
+                  {run.grammar_result?.[msgIndex] &&
+                    isValidGrammar(run.grammar_result[msgIndex]) && (
+                      <Button
+                        variant={grammarTrees[msgIndex] ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-6 px-2"
+                        onClick={() => handleShowGrammar(msgIndex)}
+                      >
+                        <Code2 size={14} className="mr-1" />
+                        <span className="text-xs">
+                          {grammarTrees[msgIndex] ? "Hide Prompt Template" : "Show Prompt Template"}
+                        </span>
+                      </Button>
+                    )}
                 </div>
                 <div className="text-sm whitespace-pre-wrap break-words mt-2">
                   {grammarTrees[msgIndex] ? (
@@ -344,14 +343,13 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                         <Bot size={16} className="text-primary-600 flex-shrink-0" />
                         <span className="text-xs text-primary-600">Response</span>
                       </div>
-                      
+
                       {/* Show response texts */}
                       {run.response_texts.map((responseText, index) => (
-                        <div 
+                        <div
                           key={index}
-                          className={`text-sm whitespace-pre-wrap break-words mt-2 ${
-                            responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
-                          }`}
+                          className={`text-sm whitespace-pre-wrap break-words mt-2 ${responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
+                            }`}
                           onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
                         >
                           {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
@@ -359,7 +357,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                       ))}
                     </div>
                   )}
-                  
+
                   {/* Show tool calls from the response */}
                   {run.response?.choices?.[0]?.message?.tool_calls && (
                     <div className="ml-6 space-y-2">

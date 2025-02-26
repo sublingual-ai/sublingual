@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import openai
 
 # Load environment variables from keys.env
-load_dotenv("keys.env")
+load_dotenv(".env")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Minimal Django settings

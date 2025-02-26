@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 
 # Load environment variables from keys.env
-load_dotenv("keys.env")
+load_dotenv(".env")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()

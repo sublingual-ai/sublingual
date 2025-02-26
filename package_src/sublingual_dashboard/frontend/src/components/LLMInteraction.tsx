@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { parseGrammarFormat, GrammarNode } from "@/utils/grammarParser";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { GrammarTree } from "@/components/GrammarTree";
+import { formatElapsedTime } from "@/utils/format";
 
 interface LLMInteractionProps {
   run: LLMRun;
@@ -292,6 +293,16 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                       <>
                         <User size={16} className="text-gray-600 flex-shrink-0" />
                         <span className="text-xs text-gray-600">{msg.role}</span>
+                      </>
+                    )}
+                    
+                    {/* Add duration_ms display for the last message */}
+                    {isLastMessage && run.duration_ms && (
+                      <>
+                        <span className="text-gray-300">•</span>
+                        <span className="text-xs text-gray-600">
+                          {formatElapsedTime(run.duration_ms)}
+                        </span>
                       </>
                     )}
                   </div>

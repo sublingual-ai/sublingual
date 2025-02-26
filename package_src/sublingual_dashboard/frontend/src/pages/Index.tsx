@@ -4,24 +4,28 @@ import { RunsList } from "@/components/RunsList";
 import { SessionsList } from "@/components/SessionsList";
 import { CallHierarchy } from "@/components/CallHierarchy";
 import { Button } from "@/components/ui/button";
-import { ListTree, GitBranch, Network, Hash, BarChart } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ListTree, GitBranch, Network, Hash, BarChart, LayoutDashboard, CheckSquare, Square } from "lucide-react";
 import { LogFileProvider, useLogFile } from "@/contexts/LogFileContext";
 import { LLMRun, SessionRow } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { MetricsView } from "@/components/MetricsView";
 import { useLogs } from '@/hooks/useLogs';
+import { DashboardView } from "@/components/DashboardView";
 
-type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics';
+type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics' | 'dashboard';
 
 const Dashboard = () => {
   const [view, setView] = useState<ViewType>(() => {
     const savedView = localStorage.getItem('selectedView');
-    return (savedView as ViewType) || 'runs';
+    return (savedView as ViewType) || 'dashboard';
   });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const { selectedFile } = useLogFile();
-  const { runs, sessions, isLoading } = useLogs(selectedFile);
+  const { selectedFiles, availableFiles, toggleFile, selectAllFiles, deselectAllFiles } = useLogFile();
+  
+  // Combine runs from all selected files
+  const { runs, sessions, isLoading } = useLogs(selectedFiles);
 
   useEffect(() => {
     localStorage.setItem('selectedView', view);
@@ -38,12 +42,12 @@ const Dashboard = () => {
       <div className="h-full flex flex-col">
         <div className="flex-shrink-0 mb-4 flex justify-end space-x-2">
           <Button
-            variant={view === 'runs' ? 'default' : 'outline'}
+            variant={view === 'dashboard' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setView('runs')}
+            onClick={() => setView('dashboard')}
           >
-            <ListTree className="w-4 h-4 mr-2" />
-            Runs View
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            Dashboard
           </Button>
           <Button
             variant={view === 'metrics' ? 'default' : 'outline'}
@@ -78,6 +82,7 @@ const Dashboard = () => {
         </div>
         
         <div className="flex-1 min-h-0">
+          {view === 'dashboard' && <DashboardView runs={runs} />}
           {view === 'runs' && <RunsList runs={runs}  />}
           {view === 'sessions' && <SessionsList runs={runs} />}
           {view === 'metrics' && <MetricsView runs={runs} />}

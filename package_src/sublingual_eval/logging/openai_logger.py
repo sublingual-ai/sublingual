@@ -37,7 +37,7 @@ def write_logged_data(subl_logs_path, logged_data, file_name):
         f.write(json.dumps(logged_data, cls=GrammarEncoder) + "\n")
 
 
-def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
+def create_logged_data(result, args, kwargs, caller_frame, grammar_json, duration_ms):
     """Create the logged data dictionary from a completion result"""
     # Get the full stack trace
     stack = inspect.stack()
@@ -135,6 +135,7 @@ def create_logged_data(result, args, kwargs, caller_frame, grammar_json):
         "response": response_dict,
         "usage": result.usage.to_dict(),
         "timestamp": int(time.time()),
+        "duration_ms": duration_ms,
         "stack_trace": stack_info,
         "call_parameters": {
             "model": kwargs.get("model"),
@@ -158,7 +159,9 @@ def setup_openai_logging(subl_logs_path: str):
 
     @functools.wraps(original_completions_create)
     def logged_completions_create(self, *args, **kwargs):
+        start_time = time.perf_counter()
         result = original_completions_create(self, *args, **kwargs)
+        duration_ms = round((time.perf_counter() - start_time) * 1000)
 
         try:
             caller_frame = inspect.currentframe().f_back
@@ -175,7 +178,7 @@ def setup_openai_logging(subl_logs_path: str):
 
         try:
             logged_data = create_logged_data(
-                result, args, kwargs, caller_frame, grammar_dict
+                result, args, kwargs, caller_frame, grammar_dict, duration_ms
             )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:
@@ -192,7 +195,9 @@ def setup_openai_async_logging(subl_logs_path: str):
 
     @functools.wraps(original_acreate)
     async def logged_completions_acreate(self, *args, **kwargs):
+        start_time = time.perf_counter()
         result = await original_acreate(self, *args, **kwargs)
+        duration_ms = round((time.perf_counter() - start_time) * 1000)
 
         try:
             arg_node, env = get_arg_node(inspect.currentframe().f_back, "create")
@@ -205,7 +210,7 @@ def setup_openai_async_logging(subl_logs_path: str):
         try:
             caller_frame = inspect.currentframe().f_back
             logged_data = create_logged_data(
-                result, args, kwargs, caller_frame, grammar_dict
+                result, args, kwargs, caller_frame, grammar_dict, duration_ms
             )
             write_logged_data(subl_logs_path, logged_data, output_file_name)
         except Exception as e:

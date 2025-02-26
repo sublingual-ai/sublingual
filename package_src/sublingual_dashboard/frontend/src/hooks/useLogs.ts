@@ -3,47 +3,59 @@ import { LLMRun, SessionRow } from '@/types/logs';
 import { groupRunsIntoSessions } from '@/utils/sessionUtils';
 import { API_BASE_URL } from '@/config';
 
-export const useLogs = (selectedFile: string | null) => {
-  const [runs, setRuns] = useState<LLMRun[]>([]);
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+export function useLogs(files: string | string[]) {
+  const [data, setData] = useState<{ runs: LLMRun[], sessions: SessionRow[] }>({ runs: [], sessions: [] });
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!selectedFile) return;
+    if (!files || (Array.isArray(files) && files.length === 0)) {
+      setData({ runs: [], sessions: [] });
+      setIsLoading(false);
+      return;
+    }
 
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
 
-      try {
-        const res = await fetch(`${API_BASE_URL}/get_log?filename=${selectedFile}`);
-        if (!res.ok) {
-          throw new Error('Failed to fetch logs');
-        }
-        const data: LLMRun[] = await res.json();
-
+    const fileList = Array.isArray(files) ? files : [files];
+    Promise.all(fileList.map(file => 
+      fetch(`${API_BASE_URL}/get_log?filename=${file}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`Failed to fetch log: ${file}`);
+          return res.json();
+        })
+    ))
+    .then(results => {
+      const allRuns = results.flatMap(runs => {
         // Construct response_texts array from response choices
-        data.forEach(run => {
+        runs.forEach(run => {
           if (run.response?.choices) {
             run.response_texts = run.response.choices.map(choice => choice.message.content);
           }
         });
+        return runs;
+      });
+      
+      setData({
+        runs: allRuns,
+        sessions: processRuns(allRuns)
+      });
+    })
+    .catch(err => {
+      console.error('Error fetching logs:', err);
+      setError(err.message);
+      setData({ runs: [], sessions: [] });
+    })
+    .finally(() => {
+      setIsLoading(false);
+    });
+  }, [files]);
 
-        setRuns(data);
-        setSessions(groupRunsIntoSessions(data));
-      } catch (error) {
-        console.error('Error fetching logs:', error);
-        setError(error instanceof Error ? error.message : 'Failed to fetch logs');
-        setRuns([]);
-        setSessions([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  return { ...data, isLoading, error };
+}
 
-    fetchData();
-  }, [selectedFile]);
-
-  return { runs, sessions, isLoading, error };
-}; 
+function processRuns(runs: LLMRun[]): SessionRow[] {
+  // Implement the logic to process runs and return sessions
+  return groupRunsIntoSessions(runs);
+} 

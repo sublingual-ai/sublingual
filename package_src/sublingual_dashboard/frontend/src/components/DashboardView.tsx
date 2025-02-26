@@ -276,15 +276,15 @@ export function DashboardView({ runs }: DashboardViewProps) {
                   itemStyle={{ color: '#2563eb' }}
                 />
                 <Line
-                  type="linear"  // Straight line between neighboring points
+                  type="linear"
                   dataKey={selectedMetric}
                   stroke="#2563eb"
                   strokeWidth={2}
                   dot={(props) => {
-                    // Only display a dot if the value is non-zero
                     const value = props.payload[selectedMetric];
                     return value > 0 ? (
                       <circle 
+                        key={`dot-${props.cx}-${props.cy}`}
                         cx={props.cx} 
                         cy={props.cy} 
                         r={3} 

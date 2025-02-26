@@ -2,9 +2,8 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
 import { PanelLeft } from "lucide-react"
-
-import { useIsMobile } from "@/hooks/use-mobile"
-import { cn } from "@/lib/utils"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Search, RefreshCcw, CheckSquare, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -16,21 +15,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useLogFile } from "@/contexts/LogFileContext"
+import { cn } from "@/lib/utils"
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContext = {
   state: "expanded" | "collapsed"
   open: boolean
   setOpen: (open: boolean) => void
-  openMobile: boolean
-  setOpenMobile: (open: boolean) => void
-  isMobile: boolean
   toggleSidebar: () => void
 }
 
@@ -65,9 +61,6 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobile = useIsMobile()
-    const [openMobile, setOpenMobile] = React.useState(false)
-
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
     const [_open, _setOpen] = React.useState(defaultOpen)
@@ -89,26 +82,8 @@ const SidebarProvider = React.forwardRef<
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open)
-    }, [isMobile, setOpen, setOpenMobile])
-
-    // Adds a keyboard shortcut to toggle the sidebar.
-    React.useEffect(() => {
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (
-          event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-          (event.metaKey || event.ctrlKey)
-        ) {
-          event.preventDefault()
-          toggleSidebar()
-        }
-      }
-
-      window.addEventListener("keydown", handleKeyDown)
-      return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [toggleSidebar])
+      setOpen((open) => !open)
+    }, [setOpen])
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
@@ -119,12 +94,9 @@ const SidebarProvider = React.forwardRef<
         state,
         open,
         setOpen,
-        isMobile,
-        openMobile,
-        setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+      [state, open, setOpen, toggleSidebar]
     )
 
     return (
@@ -173,7 +145,7 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const { state, open } = useSidebar()
 
     if (collapsible === "none") {
       return (
@@ -187,26 +159,6 @@ const Sidebar = React.forwardRef<
         >
           {children}
         </div>
-      )
-    }
-
-    if (isMobile) {
-      return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-          <SheetContent
-            data-sidebar="sidebar"
-            data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-              } as React.CSSProperties
-            }
-            side={side}
-          >
-            <div className="flex h-full w-full flex-col">{children}</div>
-          </SheetContent>
-        </Sheet>
       )
     }
 
@@ -552,7 +504,7 @@ const SidebarMenuButton = React.forwardRef<
     ref
   ) => {
     const Comp = asChild ? Slot : "button"
-    const { isMobile, state } = useSidebar()
+    const { state } = useSidebar()
 
     const button = (
       <Comp
@@ -581,7 +533,7 @@ const SidebarMenuButton = React.forwardRef<
         <TooltipContent
           side="right"
           align="center"
-          hidden={state !== "collapsed" || isMobile}
+          hidden={state !== "collapsed"}
           {...tooltip}
         />
       </Tooltip>
@@ -758,4 +710,80 @@ export {
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
+}
+
+export function LogFilesSidebar() {
+  const { 
+    selectedFiles, 
+    availableFiles, 
+    toggleFile, 
+    selectAllFiles, 
+    deselectAllFiles 
+  } = useLogFile();
+
+  function getFileName(path: string): string {
+    return path.split('/').pop() || path;
+  }
+
+  return (
+    <div className="w-64 border-r bg-gray-50/40 flex flex-col">
+      <div className="p-4 border-b">
+        <div className="flex gap-2 mb-4">
+          <Input
+            type="text"
+            placeholder="Search logs..."
+            className="h-9"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-2"
+          >
+            <RefreshCcw className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={selectAllFiles}
+            className="flex-1"
+          >
+            <CheckSquare className="h-4 w-4 mr-2" />
+            Select All
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={deselectAllFiles}
+            className="flex-1"
+          >
+            <Square className="h-4 w-4 mr-2" />
+            Clear
+          </Button>
+        </div>
+        <div className="text-xs text-gray-500 mt-2 text-center">
+          {selectedFiles.length} of {availableFiles.length} logs selected
+        </div>
+      </div>
+      
+      <ScrollArea className="flex-1">
+        <div className="p-2 space-y-1">
+          {availableFiles.map(file => (
+            <button
+              key={file.path}
+              className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+                selectedFiles.includes(file.path) 
+                  ? 'bg-primary-50 text-primary-900' 
+                  : 'hover:bg-gray-100'
+              }`}
+              onClick={() => toggleFile(file.path)}
+            >
+              <div className="text-sm truncate">{getFileName(file.path)}</div>
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
 }

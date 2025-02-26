@@ -245,23 +245,35 @@ export function DashboardView({ runs }: DashboardViewProps) {
                   orientation="left"
                   axisLine={true}
                   tickLine={true}
-                  ticks={[0, Math.floor(chartData.reduce((max, point) => Math.max(max, point[selectedMetric]), 0) / 2), Math.max(...chartData.map(point => point[selectedMetric]))]}  // Force exactly 3 ticks: 0, middle, max
+                  ticks={(() => {
+                    const max = Math.max(...chartData.map(point => point[selectedMetric]));
+                    const adjustedMax = max % 2 === 1 ? max + 1 : max;
+                    return [0, adjustedMax / 2, adjustedMax];
+                  })()}
                 />
                 <Tooltip
                   labelFormatter={(timestamp) => {
                     const date = new Date(timestamp);
-                    return date.toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
+                    return timeRange === '1h' 
+                      ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                   }}
                   formatter={(value) => [
-                    selectedMetric === 'duration' ? formatElapsedTime(Number(value)) : value,
-                    ''
+                    selectedMetric === 'duration' 
+                      ? formatElapsedTime(Number(value))
+                      : value.toLocaleString()
                   ]}
                   isAnimationActive={false}
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                    fontSize: '14px'
+                  }}
+                  labelStyle={{ color: '#64748b', fontSize: '12px' }}
+                  itemStyle={{ color: '#2563eb' }}
                 />
                 <Line
                   type="linear"  // Straight line between neighboring points

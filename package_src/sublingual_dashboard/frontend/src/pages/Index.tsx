@@ -19,7 +19,7 @@ type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics' | 'dashboard';
 const Dashboard = () => {
   const [view, setView] = useState<ViewType>(() => {
     const savedView = localStorage.getItem('selectedView');
-    return (savedView as ViewType) || 'runs';
+    return (savedView as ViewType) || 'dashboard';
   });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const { selectedFile } = useLogFile();

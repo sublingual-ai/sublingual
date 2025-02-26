@@ -49,13 +49,9 @@ client = OpenAI(
 
 ## Server support
 If you are running a server that makes LLM calls, we support Flask, FastAPI, Django, and more.
-Run
+Just throw subl before it like
 ```bash
-subl -m flask run ...
-```
-instead of
-```bash
-flask run ...
+subl flask run ...
 ```
 
 ## License

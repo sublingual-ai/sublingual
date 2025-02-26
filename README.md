@@ -8,9 +8,9 @@
     pip install subl
     ``` 
 
-2. Run your script as usual with `subl` instead of `python`
+2. Throw `subl` in front of your original command
     ```bash
-    subl <your_script.py>
+    subl python your_script.py      # Replace 'python your_script.py' with your actual entry point
     ```
 
 3. Pull up the dashboard:

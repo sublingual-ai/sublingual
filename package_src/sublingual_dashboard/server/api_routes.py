@@ -2,20 +2,98 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 import json
-import argparse
 from flask import Flask, jsonify, Blueprint
-from evaluations.simple_evaluations import (
-    random_0_100,
-    user_sentiment,
-    system_prompt_obedience,
-    correctness,
-    initialize_client,
-)
 import config
-
+from evaluations.evaluation import Evaluation, initialize_client
+from typing import Dict, List, Optional
 
 router = Blueprint('api', __name__)
 
+# Add near the top with other constants
+DEFAULT_METRICS = {
+    "correctness": {
+        "name": "correctness",
+        "prompt": "Evaluate the correctness of the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
+    },
+    "user_sentiment": {
+        "name": "user_sentiment",
+        "prompt": "Evaluate the user's sentiment towards the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
+    },
+    "system_prompt_obedience": {
+        "name": "system_prompt_obedience",
+        "prompt": "Evaluate the system prompt obedience of the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
+    }
+}
+
+def initialize_metrics():
+    """Initialize the metrics configuration file if it doesn't exist."""
+    metrics_dir = os.path.join(config.project_dir, "metrics")
+    metrics_file = os.path.join(metrics_dir, "metrics.json")
+    
+    if not os.path.exists(metrics_dir):
+        os.makedirs(metrics_dir)
+    
+    if not os.path.exists(metrics_file):
+        with open(metrics_file, 'w') as f:
+            json.dump(DEFAULT_METRICS, f, indent=2)
+
+
+def fetch_metrics_from_disk():
+    metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
+    try:
+        with open(metrics_file, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        initialize_metrics()
+        with open(metrics_file, 'r') as f:
+            return json.load(f)
+
+
+def get_evaluations_file_path() -> str:
+    """Get the path to the evaluations storage file."""
+    eval_dir = os.path.join(config.project_dir, "metrics")
+    if not os.path.exists(eval_dir):
+        os.makedirs(eval_dir)
+    return os.path.join(eval_dir, "evaluations.json")
+
+def load_evaluations() -> Dict:
+    """Load existing evaluations from file."""
+    file_path = get_evaluations_file_path()
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_evaluations(evaluations: Dict) -> None:
+    """Save evaluations to file."""
+    file_path = get_evaluations_file_path()
+    with open(file_path, 'w') as f:
+        json.dump(evaluations, f, indent=2)
+
+def check_existing_evaluations(run_id: str, criteria: List[str]) -> Dict[str, List[str]]:
+    """Check which criteria already have evaluations for the given run."""
+    existing_evals = load_evaluations()
+    if run_id not in existing_evals:
+        return {}
+    
+    existing_criteria = {}
+    for criterion in criteria:
+        if criterion in existing_evals[run_id]:
+            if criterion not in existing_criteria:
+                existing_criteria[criterion] = []
+            existing_criteria[criterion].append(run_id)
+    
+    return existing_criteria
 
 @router.route("/health")
 def health():
@@ -28,21 +106,35 @@ def evaluate():
     run_id = data.get("run_id", "")
     run_data = data.get("run", {})
     criteria = data.get("criteria", [])
-
+    check_existing = data.get("check_existing", False)
+    force = data.get("force", False)
+    
+    # If just checking existing evaluations, return that info
+    if check_existing:
+        existing = check_existing_evaluations(run_id, criteria)
+        return jsonify({"existing_evaluations": existing})
+    
+    # Get metrics as Python dict
+    metrics = fetch_metrics_from_disk()
+    
     results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
-        if "correctness" in criteria:
-            results["correctness"] = correctness(
-                run_data["messages"], run_data["response"]
+        for criterion in criteria:
+            messages = run_data["messages"] + [run_data["response"]["choices"][0]["message"]]
+            results[criterion] = Evaluation.from_dict(
+                metrics[criterion]
+            ).grade(
+                messages, "gpt-4o-mini"
             )
-        if "user_sentiment" in criteria:
-            results["user_sentiment"] = user_sentiment(
-                run_data["messages"], run_data["response"]
-            )
-        if "system_prompt_obedience" in criteria:
-            results["system_prompt_obedience"] = system_prompt_obedience(
-                run_data["messages"], run_data["response"]
-            )
+        
+        # Save results if force is True
+        if force:
+            evaluations = load_evaluations()
+            if run_id not in evaluations:
+                evaluations[run_id] = {}
+            evaluations[run_id].update(results)
+            save_evaluations(evaluations)
+            
         return jsonify({"scores": results})
     except AttributeError as e:
         if "NoneType" in str(e):
@@ -55,9 +147,9 @@ def evaluate():
                 ),
                 503,
             )
-        raise
+        raise e
     except Exception as e:
-        return jsonify({"error": "Evaluation failed", "details": str(e)}), 500
+        return jsonify({"error": "Evaluation failed ", "details": str(e)}), 500
 
 
 @router.route("/get_log")
@@ -81,7 +173,10 @@ def get_log():
 
 @router.route("/get_available_logs")
 def get_available_logs():
-    files = [os.path.join(config.log_dir, f) for f in os.listdir(config.log_dir)]
+    log_dir = os.path.join(config.project_dir, "logs")
+    if not os.path.exists(log_dir):
+        return jsonify([])
+    files = [os.path.join(log_dir, f) for f in os.listdir(log_dir)]
     # Get creation time for each file and sort descending
     files_with_time = [(f, os.path.getctime(f)) for f in files]
     files_with_time.sort(key=lambda x: x[1], reverse=True)
@@ -129,5 +224,67 @@ def delete_log():
 
         os.remove(file_path)
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/metrics", methods=['GET'])
+def get_metrics():
+    try:
+        return jsonify(fetch_metrics_from_disk())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/metrics/add", methods=['POST'])
+def add_metric():
+    try:
+        data = request.json
+        required_fields = ['name', 'prompt', 'tool_type', 'min_val', 'max_val']
+        
+        # Validate required fields
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                "error": "Missing required fields",
+                "required": required_fields
+            }), 400
+
+        # Read existing metrics
+        metrics = fetch_metrics_from_disk()
+        
+        # Generate a unique key from the name
+        key = data['name'].lower().replace(' ', '_')
+        
+        # Check if metric already exists
+        if key in metrics:
+            return jsonify({
+                "error": "A metric with this name already exists"
+            }), 400
+            
+        # Add new metric
+        metrics[key] = {
+            "name": data['name'],
+            "prompt": data['prompt'],
+            "tool_type": data['tool_type'],
+            "min_val": data['min_val'],
+            "max_val": data['max_val']
+        }
+        
+        # Write back to file
+        metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
+        with open(metrics_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+            
+        return jsonify(metrics)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/evaluations", methods=['GET'])
+def get_evaluations():
+    """Return all stored evaluations."""
+    try:
+        evals = load_evaluations()
+        return jsonify(evals)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -129,13 +129,13 @@ class Spinner:
 def start_flask(
     flask_dir,
     port="5360",
-    log_dir="logs",
+    project_dir=".sublingual",
     verbose=False,
     debug=False,
     env_path=".env",
 ):
     # Use absolute path from current working directory
-    abs_log_dir = os.path.abspath(log_dir)
+    abs_project_dir = os.path.abspath(project_dir)
 
     # Start the Flask server using app.py with custom arguments
     with Spinner(f"Starting Flask server...", is_last=True):
@@ -144,8 +144,8 @@ def start_flask(
             os.path.join(flask_dir, "app.py"),
             "--port",
             str(port),
-            "--log-dir",
-            abs_log_dir,
+            "--project-dir",
+            abs_project_dir,
             "--env",
             env_path,
         ]
@@ -164,26 +164,26 @@ def start_flask(
         return proc
 
 
-def print_startup_message(flask_port, log_dir):
+def print_startup_message(flask_port, project_dir):
     # ANSI escape codes for colors
     BLUE = "\033[94m"
     GREEN = "\033[92m"
     YELLOW = "\033[93m"
     RESET = "\033[0m"
 
-    # Truncate log_dir from the left if too long, preserving 30 chars
-    max_path_length = 50
-    truncated_log_dir = (
-        log_dir
-        if len(log_dir) <= max_path_length
-        else "..." + log_dir[-(max_path_length - 3) :]
+    # Truncate project_dir from the left if too long, preserving 30 chars
+    max_path_length = 30
+    truncated_project_dir = (
+        project_dir
+        if len(project_dir) <= max_path_length
+        else "..." + project_dir[-(max_path_length - 3) :]
     )
 
     server_url = f"http://localhost:{flask_port}"
     messages = [
         "🚀 Server started successfully!",
         f"🌐 View dashboard at: {YELLOW}{server_url}{RESET}",
-        f"📁 Logs: {YELLOW}{truncated_log_dir}{RESET}",
+        f"📁 Project Directory: {YELLOW}{truncated_project_dir}{RESET}",
         f"💡 {GREEN}Press Ctrl+C to stop the server{RESET}",
     ]
 
@@ -218,10 +218,10 @@ def print_startup_message(flask_port, log_dir):
 
 
 def main(args):
-    # Check if log directory exists
-    abs_log_dir = os.path.abspath(args.log_dir)
-    if not os.path.exists(abs_log_dir):
-        print(f"Error: Log directory '{abs_log_dir}' does not exist")
+    # Check if project directory exists
+    abs_project_dir = os.path.abspath(args.project_dir)
+    if not os.path.exists(abs_project_dir):
+        print(f"Error: Project directory '{abs_project_dir}' does not exist")
         sys.exit(1)
 
     # Check and handle any port conflicts before starting server
@@ -235,7 +235,7 @@ def main(args):
     flask_proc = start_flask(
         flask_dir,
         port=args.port,
-        log_dir=args.log_dir,
+        project_dir=args.project_dir,
         verbose=args.verbose,
         debug=args.flask_debug,
         env_path=args.env,
@@ -250,7 +250,7 @@ def main(args):
         sys.exit(1)
 
     # Print the nice formatted message if not in verbose mode
-    print_startup_message(args.port, abs_log_dir)
+    print_startup_message(args.port, abs_project_dir)
 
     def shutdown(sig, frame):
         print("\nShutting down server...")

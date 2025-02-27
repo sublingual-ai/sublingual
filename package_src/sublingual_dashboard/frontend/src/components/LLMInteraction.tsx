@@ -8,9 +8,10 @@ import { parseGrammarFormat, GrammarNode } from "@/utils/grammarParser";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { GrammarTree } from "@/components/GrammarTree";
 import { formatElapsedTime } from "@/utils/format";
+import { formatTimestamp } from "@/utils/metrics";
 
 interface LLMInteractionProps {
-  run: LLMRun;
+  run: LLMRun | null;
 }
 
 interface FullMessagePopupProps {
@@ -74,26 +75,49 @@ const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
 
 const MESSAGE_TRUNCATE_LENGTH = 500;
 
-function truncateContent(content: string, onClick: () => void) {
-  if (content.length <= MESSAGE_TRUNCATE_LENGTH) return content;
-
+// Move truncateContent to be a proper React component
+const TruncatedContent = ({ content }: { content: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (content.length <= MESSAGE_TRUNCATE_LENGTH) return <>{content}</>;
+  
   const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
   const start = content.slice(0, halfLength);
   const end = content.slice(-halfLength);
-
+  
+  if (isExpanded) {
+    return (
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsExpanded(false);
+        }}
+        className="cursor-pointer group"
+      >
+        <span>{content}</span>
+        <div className="my-3 text-primary-400 font-medium text-sm group-hover:text-primary-600">
+          Click to collapse message
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div
-      onClick={onClick}
-      className="cursor-pointer hover:bg-gray-50 rounded-md p-2 -mx-2"
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsExpanded(true);
+      }}
+      className="cursor-pointer group"
     >
       <span>{start}</span>
-      <div className="my-3 text-gray-600 font-medium text-sm">
+      <div className="my-3 text-primary-400 font-medium text-sm group-hover:text-primary-600">
         Click to see full message
       </div>
       <span>{end}</span>
     </div>
   );
-}
+};
 
 const ObjectDisplay = ({ data }: { data: any }) => {
   const renderValue = (value: any): JSX.Element => {
@@ -105,13 +129,17 @@ const ObjectDisplay = ({ data }: { data: any }) => {
     if (Array.isArray(value)) {
       if (value.length === 0) return <span className="text-gray-400">[]</span>;
       return (
-        <div className="pl-4 border-l border-blue-200">
-          {value.map((item, i) => (
-            <div key={i} className="text-gray-600">
-              {renderValue(item)}
-              {i < value.length - 1 && ","}
-            </div>
-          ))}
+        <div className="pl-4">
+          [
+          <div className="pl-4">
+            {value.map((item, i) => (
+              <div key={i}>
+                {renderValue(item)}
+                {i < value.length - 1 && ","}
+              </div>
+            ))}
+          </div>
+          ]
         </div>
       );
     }
@@ -130,15 +158,19 @@ const ObjectTree = ({ data }: { data: Record<string, any> }) => {
   }
 
   return (
-    <div className="pl-4 border-l border-blue-200">
-      {Object.entries(data).map(([key, value], i) => (
-        <div key={key} className="text-gray-600">
-          <span className="text-blue-700 font-medium">{key}</span>
-          <span className="text-gray-400">: </span>
-          <ObjectDisplay data={value} />
-          {i < Object.keys(data).length - 1 && ","}
-        </div>
-      ))}
+    <div className="pl-4">
+      {"{"}
+      <div className="pl-4">
+        {Object.entries(data).map(([key, value], i) => (
+          <div key={key}>
+            <span className="text-blue-700 font-medium">{key}</span>
+            <span className="text-gray-400">: </span>
+            <ObjectDisplay data={value} />
+            {i < Object.keys(data).length - 1 && ","}
+          </div>
+        ))}
+      </div>
+      {"}"}
     </div>
   );
 };
@@ -169,8 +201,10 @@ const isValidGrammar = (grammarResult: any) => {
 };
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
-  const [selectedContent, setSelectedContent] = useState<string | null>(null);
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
+
+  if (!run) return null;
 
   const handleShowGrammar = (msgIndex: number) => {
     if (run.grammar_result?.[msgIndex]) {
@@ -207,6 +241,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     return [...messageToolCalls, ...responseToolCalls];
   };
 
+  // Update renderContent to use the new component
   const renderContent = (content: any, msg: Message) => {
     if (!content) return null;
 
@@ -215,7 +250,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
         if (block.type === 'text') {
           return (
             <div key={index}>
-              {truncateContent(block.text, () => setSelectedContent(block.text))}
+              {block.text && <TruncatedContent content={block.text} />}
             </div>
           );
         } else if (block.type === 'image_url') {
@@ -225,19 +260,36 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
             </div>
           );
         } else {
-          return <ObjectDisplay key={index} data={block} />;
+          // For other types of blocks, display as formatted JSON
+          return (
+            <div key={index} className="font-mono text-sm">
+              <ObjectTree data={block} />
+            </div>
+          );
         }
       });
-    } else if (typeof content === 'string') {
+    }
+
+    // If content is a string
+    if (typeof content === 'string') {
       return (
         <div>
-          {truncateContent(content, () => setSelectedContent(content))}
+          <TruncatedContent content={content} />
         </div>
       );
-    } else if (typeof content === 'object' && content !== null) {
-      return <ObjectDisplay data={content} />;
     }
-    return null;
+
+    // If content is an object
+    if (typeof content === 'object' && content !== null) {
+      return (
+        <div className="font-mono text-sm">
+          <ObjectTree data={content} />
+        </div>
+      );
+    }
+
+    // Fallback for other types
+    return <div>{String(content)}</div>;
   };
 
   return (
@@ -248,7 +300,6 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           onClose={() => setSelectedContent(null)}
         />
       )}
-
       <div className="space-y-2">
         {run.messages?.map((msg, msgIndex) => {
           const allToolCalls = getToolCalls(msg, msgIndex);
@@ -363,7 +414,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                             }`}
                           onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
                         >
-                          {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
+                          {responseText && <TruncatedContent content={responseText} />}
                         </div>
                       ))}
                     </div>

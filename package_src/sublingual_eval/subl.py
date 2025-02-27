@@ -14,9 +14,9 @@ def main():
         # Handle server command
         parser.add_argument("command", help="Command to run (server)")
         parser.add_argument(
-            "--log-dir",
-            help="Directory containing the log files (e.g., subl_logs)",
-            default=os.path.join(os.getcwd(), ".sublingual", "logs"),
+            "--project-dir",
+            help="Directory containing the Sublingual project files",
+            default=os.path.join(os.getcwd(), ".sublingual"),
             type=str,
         )
         parser.add_argument(

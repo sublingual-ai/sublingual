@@ -28,6 +28,13 @@ export function useLogs(files: string | string[]) {
     ))
     .then(results => {
       const allRuns = results.flatMap(runs => {
+        // Add logging here
+        console.log('Fetched logs:', {
+          numRuns: runs.length,
+          firstRun: runs[0],
+          lastRun: runs[runs.length - 1]
+        });
+
         // Construct response_texts array from response choices
         runs.forEach(run => {
           if (run.response?.choices) {
@@ -35,6 +42,12 @@ export function useLogs(files: string | string[]) {
           }
         });
         return runs;
+      });
+      
+      // Add summary logging
+      console.log('Processed all logs:', {
+        totalRuns: allRuns.length,
+        sessions: processRuns(allRuns).length
       });
       
       setData({

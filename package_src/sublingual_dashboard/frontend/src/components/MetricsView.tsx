@@ -1,42 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
 import { LLMRun, Message } from "@/types/logs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { LLMInteraction } from "@/components/LLMInteraction";
-import { LLMHeader } from "@/components/LLMHeader";
 import { API_BASE_URL } from '@/config';
 import { Filter, FilterOption } from "@/types/logs";
-import { Input } from "@/components/ui/input";
 import { RunsFilter } from "@/components/RunsFilter";
 import { useToast } from "@/components/ui/use-toast";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Plus } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-import { HelpCircle } from "lucide-react";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -48,6 +18,13 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SessionsList } from "@/components/SessionsList";
+
+import { MetricsSummary } from "./MetricsSummary";
+import { AddMetricDialog } from "./AddMetricDialog";
+import { OverwriteConfirmationDialog } from "./OverwriteConfirmationDialog";
+import { SidePane } from "./SidePane";
+import { Spreadsheet } from "./Spreadsheet";
+import { getRunId, formatTimestamp, getPreviewText, groupRunsIntoSessions } from "@/utils/metrics";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -136,564 +113,22 @@ interface SessionRow {
 	totalTokens: number;
 }
 
-const formatTimestamp = (timestamp: number) => {
-	const date = new Date(timestamp * 1000);
-	return date.toLocaleString('en-US', {
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		hour12: false
-	}).replace(',', '');
-};
-
-const getPreviewText = (messages: Message[], response: string) => {
-	if (messages.length === 0) return '';
-	const lastMessage = messages[messages.length - 1].content;
-	const preview = `${lastMessage} → ${response}`;
-	return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
-};
-
-// Replace the existing getRunId function with this one
-const getRunId = (run: LLMRun) => {
-	// Create a string that includes all relevant unique properties
-	const uniqueString = JSON.stringify({
-		timestamp: run.timestamp,
-		model: run.response.model,
-		messages: run.messages,
-		stack_info: run.stack_info,
-		session_id: run.session_id,
-		response: run.response
-	});
-
-	// Create a simple hash
-	let hash = 0;
-	for (let i = 0; i < uniqueString.length; i++) {
-		const char = uniqueString.charCodeAt(i);
-		hash = ((hash << 5) - hash) + char;
-		hash = hash & hash; // Convert to 32-bit integer
-	}
-
-	// Return a string representation of the hash
-	return `run-${Math.abs(hash)}`;
-};
-
-const MetricsSummary = ({
-	filteredRuns,
-	evaluations,
-	selectedCriteria,
-	metrics
-}: {
-	filteredRuns: LLMRun[];
-	evaluations: Record<string, Evaluation[]>;
-	selectedCriteria: EvaluationCriteria[];
-	metrics: Record<string, Metric>;
-}) => {
-	const metricsData = useMemo(() => {
-		return selectedCriteria.map(criteria => {
-			const metric = metrics[criteria];
-			const filteredRunIds = new Set(filteredRuns.map(getRunId));
-			const relevantEvals = Object.entries(evaluations)
-				.filter(([runId]) => filteredRunIds.has(runId))
-				.flatMap(([_, evals]) =>
-					evals.filter(e => e.criteria === criteria && e.status === 'evaluated')
-				);
-
-			const totalRuns = filteredRuns.length;
-			const gradedRuns = relevantEvals.length;
-
-			if (metric.tool_type === 'bool') {
-				const yesCount = relevantEvals.filter(e => e.rating === true).length;
-				return {
-					criteria,
-					isBoolean: true,
-					yesCount,
-					noCount: gradedRuns - yesCount,
-					gradedRuns,
-					totalRuns,
-					completionRate: Math.round((gradedRuns / totalRuns) * 100)
-				};
-			} else {
-				const sum = relevantEvals
-					.filter(e => typeof e.rating === 'number')
-					.reduce((sum, e) => sum + (e.rating as number), 0);
-				const averageScore = gradedRuns > 0 ? sum / gradedRuns : 0;
-				const progressValue = metric.tool_type === 'int' ? 
-					((averageScore - metric.min_val) / (metric.max_val - metric.min_val)) * 100 : 0;
-				return {
-					criteria,
-					isBoolean: false,
-					averageScore,
-					progressValue,
-					gradedRuns,
-					totalRuns,
-					completionRate: Math.round((gradedRuns / totalRuns) * 100)
-				};
-			}
-		});
-	}, [filteredRuns, evaluations, selectedCriteria, metrics]);
-
-	if (selectedCriteria.length === 0) return null;
-
-	return (
-		<div className="grid grid-cols-1 gap-3 mt-4">
-			{metricsData.map(metric => (
-				<div key={metric.criteria} className="flex items-center gap-4">
-					<div className="w-40 text-sm text-gray-600">
-						{metrics[metric.criteria].name}
-					</div>
-					<div className="flex-1">
-						<div className="flex justify-between text-sm mb-1">
-							<span className="text-primary-600 font-medium">
-								{metric.isBoolean ?
-									`${metric.yesCount} Yes, ${metric.noCount} No` :
-									`${metric.averageScore.toFixed(1)}`
-								}
-							</span>
-							<span className="text-gray-500">
-								{metric.gradedRuns}/{metric.totalRuns} graded
-							</span>
-						</div>
-						<div className="flex gap-1">
-							{metric.isBoolean ? (
-								<div className="flex-1 flex gap-1">
-									<Progress
-										value={metric.gradedRuns > 0 ? (metric.yesCount / metric.gradedRuns) * 100 : 0}
-										className="flex-1"
-									/>
-								</div>
-							) : (
-								<Progress
-									value={metric.progressValue}
-									className="flex-1"
-								/>
-							)}
-							<Progress
-								value={metric.completionRate}
-								className="w-20 [&>div]:bg-gray-300 bg-gray-100"
-							/>
-						</div>
-					</div>
-				</div>
-			))}
-		</div>
-	);
-};
-
-function AddMetricDialog({ onMetricAdded }: { onMetricAdded: () => void }) {
-	const [isOpen, setIsOpen] = useState(false);
-	const [newMetric, setNewMetric] = useState<NewMetric>({
-		name: '',
-		prompt: '',
-		tool_type: 'int',
-		min_val: 0,
-		max_val: 100
-	});
-	const { toast } = useToast();
-
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		try {
-			const response = await fetch(`${API_BASE_URL}/metrics/add`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(newMetric)
-			});
-
-			if (!response.ok) {
-				const error = await response.json();
-				throw new Error(error.error || 'Failed to add metric');
-			}
-
-			toast({
-				title: "Success",
-				description: "New metric added successfully",
-			});
-			setIsOpen(false);
-			onMetricAdded();
-		} catch (error) {
-			toast({
-				variant: "destructive",
-				title: "Error",
-				description: error instanceof Error ? error.message : "Failed to add metric",
-			});
-		}
-	};
-
-	return (
-		<Dialog open={isOpen} onOpenChange={setIsOpen}>
-			<DialogTrigger asChild>
-				<Button variant="outline" size="sm" className="flex items-center gap-2">
-					<Plus className="w-4 h-4" />
-					<span>Add Metric</span>
-				</Button>
-			</DialogTrigger>
-			<DialogContent className="sm:max-w-[600px]">
-				<DialogHeader>
-					<DialogTitle>Add New Evaluation Metric</DialogTitle>
-					<DialogDescription>
-						Create a new metric for evaluating LLM responses
-					</DialogDescription>
-				</DialogHeader>
-				<form onSubmit={handleSubmit} className="space-y-4">
-					<div className="space-y-2">
-						<div className="flex items-center gap-2">
-							<Label htmlFor="name">Name</Label>
-							<TooltipProvider delayDuration={200}>
-								<Tooltip>
-									<TooltipTrigger type="button" asChild>
-										<HelpCircle className="h-4 w-4 text-gray-500" />
-									</TooltipTrigger>
-									<TooltipContent side="right">
-										<p>A short, descriptive name for the metric that will appear in the UI</p>
-									</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
-						</div>
-						<Input
-							id="name"
-							value={newMetric.name}
-							onChange={(e) => setNewMetric(prev => ({ ...prev, name: e.target.value }))}
-							placeholder="e.g., Response Quality"
-							required
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<div className="flex items-center gap-2">
-							<Label htmlFor="prompt">Evaluation Prompt</Label>
-							<TooltipProvider delayDuration={200}>
-								<Tooltip>
-									<TooltipTrigger type="button" asChild>
-										<HelpCircle className="h-4 w-4 text-gray-500" />
-									</TooltipTrigger>
-									<TooltipContent side="right">
-										<p>The prompt that will be given to the LLM to evaluate this metric</p>
-									</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
-						</div>
-						<Textarea
-							id="prompt"
-							value={newMetric.prompt}
-							onChange={(e) => setNewMetric(prev => ({ ...prev, prompt: e.target.value }))}
-							placeholder="Describe how to evaluate this metric..."
-							className="min-h-[200px]"
-							required
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<div className="flex items-center gap-2">
-							<Label htmlFor="tool_type">Evaluation Type</Label>
-							<TooltipProvider delayDuration={200}>
-								<Tooltip>
-									<TooltipTrigger type="button" asChild>
-										<HelpCircle className="h-4 w-4 text-gray-500" />
-									</TooltipTrigger>
-									<TooltipContent side="right">
-										<p>Choose whether this metric should be evaluated as a number or a yes/no question</p>
-									</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
-						</div>
-						<Select
-							value={newMetric.tool_type}
-							onValueChange={(value) => setNewMetric(prev => ({ ...prev, tool_type: value }))}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Select evaluation type" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="int">Numeric Score</SelectItem>
-								<SelectItem value="bool">Yes/No</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-
-					{newMetric.tool_type === 'int' && (
-						<div className="grid grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<Label htmlFor="min_val">Minimum Value</Label>
-								<Input
-									id="min_val"
-									type="number"
-									value={newMetric.min_val}
-									onChange={(e) => setNewMetric(prev => ({ ...prev, min_val: parseInt(e.target.value) }))}
-									required
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="max_val">Maximum Value</Label>
-								<Input
-									id="max_val"
-									type="number"
-									value={newMetric.max_val}
-									onChange={(e) => setNewMetric(prev => ({ ...prev, max_val: parseInt(e.target.value) }))}
-									required
-								/>
-							</div>
-						</div>
-					)}
-
-					<Button type="submit" className="w-full">Add Metric</Button>
-				</form>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAutoEvaluate, sessionRuns }: SidePaneProps) => {
-	console.log('SidePane evaluations:', evaluations);
-	console.log('SidePane selectedCriteria:', selectedCriteria);
-	console.log('SidePane metrics:', metrics);
-	
-	return (
-		<div 
-			className="fixed inset-y-0 right-0 w-1/2 bg-white border-l border-gray-200 shadow-xl z-50
-				transform transition-transform duration-200 ease-out"
-		>
-			<div className="h-full flex flex-col">
-				<div className="flex items-center justify-between p-4 border-b border-gray-200">
-					<div className="space-y-1">
-						<h2 className="text-lg font-semibold">Run Details</h2>
-						<div className="text-sm text-gray-500">
-							{formatTimestamp(run.timestamp)}
-						</div>
-					</div>
-					<button 
-						onClick={onClose}
-						className="p-1 hover:bg-gray-100 rounded-full"
-					>
-						<X className="w-5 h-5" />
-					</button>
-				</div>
-				
-				<div className="flex-1 overflow-auto">
-					<div className="p-4 space-y-6">
-						{/* Basic Info Section */}
-						<div className="space-y-2">
-							<h3 className="text-sm font-medium text-gray-700">Basic Info</h3>
-							<div className="bg-gray-50 p-3 rounded-lg space-y-2">
-								<div className="text-sm">
-									<LLMHeader run={run} />
-								</div>
-								{run.stack_info && (
-									<Badge variant="outline" className="text-xs text-primary-700">
-										{run.stack_info.filename}:{run.stack_info.lineno}
-									</Badge>
-								)}
-							</div>
-						</div>
-
-						{/* Evaluations Section */}
-						<div className="space-y-2">
-							<div className="flex items-center justify-between">
-								<h3 className="text-sm font-medium text-gray-700">Evaluations</h3>
-								<Button
-									variant="outline"
-									size="sm"
-									className="flex items-center gap-2"
-									onClick={onAutoEvaluate}
-								>
-									<Calculator className="w-4 h-4" />
-									<span className="text-xs">Evaluate Metrics</span>
-								</Button>
-							</div>
-							<div className="bg-gray-50 p-3 rounded-lg">
-								<div className="flex flex-wrap gap-2">
-									{Object.entries(metrics).map(([criteria, metric]) => {
-										const evaluation = evaluations.find(e => e.criteria === criteria);
-										
-										// Skip if there's no evaluation or if it's not in an evaluated state
-										if (!evaluation || evaluation.status !== 'evaluated') return null;
-
-										const value = metric.tool_type === 'bool' 
-											? (evaluation.rating ? 'Yes' : 'No') 
-											: typeof evaluation.rating === 'number' 
-												? `${evaluation.rating}${metric.tool_type === 'int' ? '%' : ''}` 
-												: evaluation.rating;
-
-										return (
-											<Badge
-												key={criteria}
-												variant="outline"
-												className="bg-primary-50/50 border-primary-100 text-primary-700"
-											>
-												{metric.name}: {value}
-											</Badge>
-										);
-									}).filter(Boolean)}
-								</div>
-							</div>
-						</div>
-						
-						{/* Interaction Section */}
-						<div className="space-y-2">
-							<h3 className="text-sm font-medium text-gray-700">Interaction</h3>
-							<LLMInteraction run={run} />
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-};
-
-const TableHeader = ({ 
-	metrics, 
-	selectedCriteria,
-	onColumnResize 
-}: { 
-	metrics: Metrics, 
-	selectedCriteria: string[],
-	onColumnResize: (column: string, event: React.MouseEvent) => void 
-}) => {
-	return (
-		<div className="grid border-b border-[#E2E3E3] bg-white sticky top-0 z-10 shadow-sm"
-			style={{
-				gridTemplateColumns: `160px 1fr 120px 80px ${selectedCriteria.map(() => '80px').join(' ')}`
-			}}
-		>
-			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
-				<div className="flex-1">Timestamp</div>
-				<div 
-					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
-					onMouseDown={(e) => onColumnResize('timestamp', e)}
-				/>
-			</div>
-			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
-				<div className="flex-1">Message</div>
-				<div 
-					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
-					onMouseDown={(e) => onColumnResize('message', e)}
-				/>
-			</div>
-			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
-				<div className="flex-1">Model</div>
-				<div 
-					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
-					onMouseDown={(e) => onColumnResize('model', e)}
-				/>
-			</div>
-			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
-				<div className="flex-1">Temp</div>
-				<div 
-					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
-					onMouseDown={(e) => onColumnResize('temp', e)}
-				/>
-			</div>
-			{selectedCriteria.map((criteria, i) => (
-				<div key={criteria} className={`px-3 py-2 text-xs font-semibold text-gray-900 text-center flex items-center ${
-					i !== selectedCriteria.length - 1 ? 'border-r border-[#E2E3E3]' : ''
-				}`}>
-					<div className="flex-1">{metrics[criteria].name}</div>
-					{i !== selectedCriteria.length - 1 && (
-						<div 
-							className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
-							onMouseDown={(e) => onColumnResize(criteria, e)}
-						/>
-					)}
-				</div>
-			))}
-		</div>
-	);
-};
-
-const Spreadsheet = ({ columns, data, onRowClick, selectedItem, onColumnResize }: SpreadsheetProps) => {
-	return (
-		<div className="flex-1 overflow-auto">
-			<div className="grid border-b border-[#E2E3E3] bg-white sticky top-0 z-10 shadow-sm"
-				style={{
-					gridTemplateColumns: columns.map(col => `${col.width}px`).join(' ')
-				}}
-			>
-				{columns.map((col, i) => (
-					<div key={col.id} className={`px-3 py-2 text-xs font-semibold text-gray-900 flex items-center ${
-						i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
-					}`}>
-						<div className="flex-1">{col.name}</div>
-						{i !== columns.length - 1 && (
-							<div 
-								className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded"
-								onMouseDown={(e) => onColumnResize(col.id, e)}
-							/>
-						)}
-					</div>
-				))}
-			</div>
-
-			<div className="divide-y divide-gray-100">
-				{data.map((item, rowIndex) => (
-					<div 
-						key={rowIndex}
-						className={`grid hover:bg-[#F3F3F3] cursor-pointer ${
-							selectedItem === item ? 'bg-[#E8F0FE]' : ''
-						}`}
-						style={{
-							gridTemplateColumns: columns.map(col => `${col.width}px`).join(' ')
-						}}
-						onClick={() => onRowClick(item)}
-					>
-						{columns.map((col, i) => (
-							<div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
-								i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
-							} ${col.align ? `text-${col.align}` : ''} truncate`}>
-								{col.getValue(item)}
-							</div>
-						))}
-					</div>
-				))}
-			</div>
-		</div>
-	);
-};
-
-// Add this helper function to group runs into sessions
-const groupRunsIntoSessions = (runs: LLMRun[]): SessionRow[] => {
-	const sessionMap = new Map<string, SessionRow>();
-	
-	runs.forEach(run => {
-		const sessionId = run.session_id || getRunId(run);
-		const existing = sessionMap.get(sessionId);
-		
-		if (existing) {
-			existing.runs.push(run);
-			existing.lastCall = Math.max(existing.lastCall, run.timestamp);
-			existing.callCount += 1;
-			existing.totalTokens += run.usage.total_tokens;
-		} else {
-			sessionMap.set(sessionId, {
-				sessionId,
-				runs: [run],
-				firstCall: run.timestamp,
-				lastCall: run.timestamp,
-				callCount: 1,
-				totalTokens: run.usage.total_tokens
-			});
-		}
-	});
-	
-	return Array.from(sessionMap.values());
-};
-
 export function MetricsView({ runs }: MetricsViewProps) {
 	const [isLoading, setIsLoading] = useState(false);
-	const [selectedCriteria, setSelectedCriteria] = useState<EvaluationCriteria[]>([]);
+	const [selectedCriteria, setSelectedCriteria] = useState<string[]>([]);
 	const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
 	const [loadingStates, setLoadingStates] = useState<LoadingState>({});
 	const [filters, setFilters] = useState<Filter[]>([]);
-	const { toast } = useToast();
 	const [metrics, setMetrics] = useState<Metrics>({});
-	const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState>({
+	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
+	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
+	const [viewMode, setViewMode] = useState<ViewMode>('runs');
+	const [confirmationDialog, setConfirmationDialog] = useState({
 		isOpen: false,
-		existingEvals: {},
+		existingEvals: {} as Record<string, string[]>,
 		onConfirm: () => {},
 		onCancel: () => {}
 	});
-	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
 	const [columnWidths, setColumnWidths] = useState({
 		timestamp: 160,
 		message: 500,
@@ -701,9 +136,10 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		temp: 80,
 		metrics: {} as Record<string, number>
 	});
-	const [viewMode, setViewMode] = useState<ViewMode>('runs');
 
-	// Add this useEffect to fetch metrics
+	const { toast } = useToast();
+
+	// Fetch metrics on mount
 	useEffect(() => {
 		const fetchMetrics = async () => {
 			try {
@@ -724,26 +160,23 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		fetchMetrics();
 	}, []);
 
-	// Add this useEffect after the metrics fetch useEffect
+	// Fetch existing evaluations on mount
 	useEffect(() => {
 		const fetchExistingEvaluations = async () => {
 			try {
 				const response = await fetch(`${API_BASE_URL}/evaluations`);
 				if (!response.ok) throw new Error('Failed to fetch evaluations');
 				const data = await response.json();
-				console.log('Fetched evaluations:', data);  // Add this debug log
 				
-				// Convert the loaded evaluations into our frontend format
 				const formattedEvals: Record<string, Evaluation[]> = {};
 				Object.entries(data).forEach(([runId, runEvals]: [string, Record<string, any>]) => {
 					formattedEvals[runId] = Object.entries(runEvals).map(([criteria, rating]) => ({
 						criteria,
 						rating,
-						status: 'evaluated' as EvaluationStatus
+						status: 'evaluated' as const
 					}));
 				});
 				
-				console.log('Formatted evaluations:', formattedEvals);  // Add this debug log
 				setEvaluations(formattedEvals);
 			} catch (error) {
 				console.error('Error fetching evaluations:', error);
@@ -756,7 +189,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		};
 
 		fetchExistingEvaluations();
-	}, []);  // Empty dependency array means this runs once on mount
+	}, []);
 
 	// Get filtered runs based on filters
 	const filteredRuns = useMemo(() => {
@@ -780,7 +213,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		});
 	}, [runs, filters]);
 
-	// Update this effect to merge with existing evaluations instead of replacing
+	// Update evaluations when filtered runs change
 	useEffect(() => {
 		setEvaluations(prev => {
 			const newEvals: Record<string, Evaluation[]> = {};
@@ -794,7 +227,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		});
 	}, [filteredRuns]);
 
-	// Update this effect to preserve loaded evaluations
+	// Reset loading state when runs change
 	useEffect(() => {
 		setIsLoading(true);
 		setSelectedCriteria([]);
@@ -806,7 +239,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		setSelectedRun(selectedRun?.timestamp === run.timestamp ? null : run);
 	};
 
-	const handleCriteriaChange = (value: EvaluationCriteria) => {
+	const handleCriteriaChange = (value: string) => {
 		setSelectedCriteria(prev => {
 			if (prev.includes(value)) {
 				return prev.filter(c => c !== value);
@@ -815,13 +248,13 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		});
 	};
 
-	const handleRatingChange = (runId: string, criteria: EvaluationCriteria, rating: number) => {
+	const handleRatingChange = (runId: string, criteria: string, rating: number) => {
 		setEvaluations(prev => {
 			const runEvaluations = prev[runId] || [];
 			const updatedEvaluations = runEvaluations.filter(e => e.criteria !== criteria);
 			return {
 				...prev,
-				[runId]: [...updatedEvaluations, { criteria, rating, status: 'unevaluated' }]
+				[runId]: [...updatedEvaluations, { criteria, rating, status: 'unevaluated' as const }]
 			};
 		});
 	};
@@ -1263,7 +696,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 	// Add session state
 	const sessions = useMemo(() => groupRunsIntoSessions(filteredRuns), [filteredRuns]);
-	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
 
 	// Update columns to include metrics
 	const getMetricColumns = (): SpreadsheetColumn[] => 

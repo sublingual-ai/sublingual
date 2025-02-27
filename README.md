@@ -32,9 +32,11 @@ The coolest thing? You don't have to change any of your code!
 We automatically patch the OpenAI client to log all LLM calls and responses, then analyze the runtime code to extract the prompt template that you used as well. All of this so you don't have to change any of your code. When you don't want to log, you can just run your script as usual without `subl`, and the patch will not be applied or affect your code at all.
     
 
-## Supported LLM Providers
+## Supported LLM Providers and Frameworks
 
  🤖 OpenAI Client (Async + Sync)
+ 🤖 Anthropic Client (Async + Sync)
+ ⏳ LangChain coming soon
 
  ⚠️ Other LLM clients will not be logged, but hot-swapped urls are supported. e.g. Gemini
  ```python

@@ -172,7 +172,7 @@ def print_startup_message(flask_port, project_dir):
     RESET = "\033[0m"
 
     # Truncate project_dir from the left if too long, preserving 30 chars
-    max_path_length = 50
+    max_path_length = 30
     truncated_project_dir = (
         project_dir
         if len(project_dir) <= max_path_length

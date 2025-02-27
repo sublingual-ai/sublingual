@@ -5,13 +5,7 @@ import json
 import argparse
 from flask import Flask, jsonify
 from flask_cors import CORS
-from evaluations.simple_evaluations import (
-    random_0_100,
-    user_sentiment,
-    system_prompt_obedience,
-    correctness,
-    initialize_client,
-)
+from evaluations.evaluation import initialize_client
 import config
 import logging
 from api_routes import router, initialize_metrics  # Add initialize_metrics to import

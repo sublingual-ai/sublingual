@@ -9,26 +9,34 @@ from evaluations.simple_evaluations import (
     user_sentiment,
     system_prompt_obedience,
     correctness,
-    initialize_client,
 )
 import config
-
+from evaluations.evaluation import Evaluation, initialize_client
 
 router = Blueprint('api', __name__)
 
 # Add near the top with other constants
 DEFAULT_METRICS = {
     "correctness": {
-        "label": "Correctness",
-        "description": "Evaluates the accuracy and correctness of the response"
-    },
-    "system_prompt_obedience": {
-        "label": "System Prompt Obedience",
-        "description": "Measures how well the response follows the system prompt"
+        "name": "correctness",
+        "prompt": "Evaluate the correctness of the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
     },
     "user_sentiment": {
-        "label": "User Sentiment",
-        "description": "Analyzes the sentiment of user interactions"
+        "name": "user_sentiment",
+        "prompt": "Evaluate the user's sentiment towards the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
+    },
+    "system_prompt_obedience": {
+        "name": "system_prompt_obedience",
+        "prompt": "Evaluate the system prompt obedience of the response.",
+        "tool_type": "int",
+        "min_val": 0,
+        "max_val": 100
     }
 }
 
@@ -58,17 +66,12 @@ def evaluate():
 
     results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
-        if "correctness" in criteria:
-            results["correctness"] = correctness(
-                run_data["messages"], run_data["response"]
-            )
-        if "user_sentiment" in criteria:
-            results["user_sentiment"] = user_sentiment(
-                run_data["messages"], run_data["response"]
-            )
-        if "system_prompt_obedience" in criteria:
-            results["system_prompt_obedience"] = system_prompt_obedience(
-                run_data["messages"], run_data["response"]
+        for criterion in criteria:
+            messages = run_data["messages"] + [run_data["response"]["choices"][0]["message"]]
+            results[criterion] = Evaluation.from_dict(
+                DEFAULT_METRICS[criterion]
+            ).grade(
+                messages, "gpt-4o-mini"
             )
         return jsonify({"scores": results})
     except AttributeError as e:
@@ -82,9 +85,9 @@ def evaluate():
                 ),
                 503,
             )
-        raise
+        raise e
     except Exception as e:
-        return jsonify({"error": "Evaluation failed", "details": str(e)}), 500
+        return jsonify({"error": "Evaluation failed ", "details": str(e)}), 500
 
 
 @router.route("/get_log")

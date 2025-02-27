@@ -1,6 +1,6 @@
 # Global configuration variables
-log_dir = ""
+project_dir = ""
 
-def set_log_dir(path):
-    global log_dir
-    log_dir = path 
+def set_project_dir(path):
+    global project_dir
+    project_dir = path 

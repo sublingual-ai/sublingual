@@ -180,3 +180,47 @@ def get_metrics():
         return jsonify(fetch_metrics_from_disk())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@router.route("/metrics/add", methods=['POST'])
+def add_metric():
+    try:
+        data = request.json
+        required_fields = ['name', 'prompt', 'tool_type', 'min_val', 'max_val']
+        
+        # Validate required fields
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                "error": "Missing required fields",
+                "required": required_fields
+            }), 400
+
+        # Read existing metrics
+        metrics = fetch_metrics_from_disk()
+        
+        # Generate a unique key from the name
+        key = data['name'].lower().replace(' ', '_')
+        
+        # Check if metric already exists
+        if key in metrics:
+            return jsonify({
+                "error": "A metric with this name already exists"
+            }), 400
+            
+        # Add new metric
+        metrics[key] = {
+            "name": data['name'],
+            "prompt": data['prompt'],
+            "tool_type": data['tool_type'],
+            "min_val": data['min_val'],
+            "max_val": data['max_val']
+        }
+        
+        # Write back to file
+        metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
+        with open(metrics_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+            
+        return jsonify(metrics)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

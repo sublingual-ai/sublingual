@@ -57,11 +57,15 @@ class Evaluation:
             messages: List[Dict[str, Any]],
             model: str = "gpt-4o-mini"
         ) -> int:
+        if self.tool_type == "bool":
+            criteria_prompt = f"User Criteria: {self.prompt}\n\nEvaluate this as either true or false."
+        else:
+            criteria_prompt = f"User Criteria: {self.prompt}\n\nEvaluate this with a score between {self.min_val} and {self.max_val}."
 
         judge_messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": "\n".join([f"{m['role']}: {m['content']}" for m in messages])},
-            {"role": "user", "content": self.prompt},
+            {"role": "user", "content": criteria_prompt},
         ]
         judge_response = client.chat.completions.create(
             model=model,

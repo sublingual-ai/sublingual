@@ -1,6 +1,6 @@
 # 🐍 🔍 Sublingual 
 
-😴 Zero code LLM observability and evals 😴
+😴 Observe you LLM outputs and do evals without changing your code 😴
 
 [![Join Our Discord](https://img.shields.io/badge/Discord-7289DA?logo=discord&logoColor=white)](https://discord.gg/7A4Kzhth6b)
 

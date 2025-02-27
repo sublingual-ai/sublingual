@@ -1,6 +1,9 @@
 # 🐍 🔍 Sublingual 
 
-😴 Zero code LLM observability and evals 😴 [Discord](https://discord.gg/7A4Kzhth6b)
+😴 LLM Observability and Evals without changing your code 😴 
+
+[![Join Our Discord](https://img.shields.io/badge/Discord-7289DA?logo=discord&logoColor=white)](https://discord.gg/7A4Kzhth6b)
+ Ask us any questions
 
 ## Get started instantly
 1. Install:

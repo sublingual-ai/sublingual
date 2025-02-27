@@ -13,6 +13,7 @@ def main():
     os.environ["SUBL_PATCH_FASTAPI"] = "1"
     os.environ["SUBL_PATCH_DJANGO"] = "1"
     os.environ["SUBL_PATCH_FLASK"] = "1"
+    os.environ["SUBL_PATCH_ANTHROPIC"] = "1"
 
     # Print the command that is about to be executed
     print("\033[94m[sublingual]\033[0m Running command:", " ".join(sys.argv[1:]))

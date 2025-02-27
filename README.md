@@ -1,6 +1,6 @@
 # 🐍 🔍 Sublingual 
 
-😴 Zero code LLM observability and evals 😴
+😴 Zero code LLM observability and evals 😴 [Discord](https://discord.gg/7A4Kzhth6b)
 
 ## Get started instantly
 1. Install:

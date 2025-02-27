@@ -2,14 +2,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 import json
-import argparse
 from flask import Flask, jsonify, Blueprint
-from evaluations.simple_evaluations import (
-    random_0_100,
-    user_sentiment,
-    system_prompt_obedience,
-    correctness,
-)
 import config
 from evaluations.evaluation import Evaluation, initialize_client
 

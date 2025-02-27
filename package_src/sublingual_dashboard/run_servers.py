@@ -220,9 +220,9 @@ def print_startup_message(flask_port, project_dir):
 def main(args):
     # Check if project directory exists
     abs_project_dir = os.path.abspath(args.project_dir)
-    if not os.path.exists(abs_project_dir):
-        print(f"Error: Project directory '{abs_project_dir}' does not exist")
-        sys.exit(1)
+    # if not os.path.exists(abs_project_dir):
+    #     print(f"Error: Project directory '{abs_project_dir}' does not exist")
+    #     sys.exit(1)
 
     # Check and handle any port conflicts before starting server
     check_ports_and_kill_processes(args.port)

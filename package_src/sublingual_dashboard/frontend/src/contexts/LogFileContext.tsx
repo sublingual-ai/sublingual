@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '@/config';
 
 interface LogFileInfo {
@@ -11,6 +11,8 @@ interface LogFileContextType {
   toggleFile: (file: string) => void;
   selectAllFiles: () => void;
   deselectAllFiles: () => void;
+  logDirectoryError: string | null;
+  refreshFiles: () => void;
 }
 
 const LogFileContext = createContext<LogFileContextType>({
@@ -19,28 +21,44 @@ const LogFileContext = createContext<LogFileContextType>({
   toggleFile: () => {},
   selectAllFiles: () => {},
   deselectAllFiles: () => {},
+  logDirectoryError: null,
+  refreshFiles: () => {},
 });
 
 export const LogFileProvider = ({ children }: { children: React.ReactNode }) => {
   const [availableFiles, setAvailableFiles] = useState<LogFileInfo[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [logDirectoryError, setLogDirectoryError] = useState<string | null>(null);
+
+  const refreshFiles = useCallback(async () => {
+    console.log("Fetching available logs");
+    try {
+      const res = await fetch(`${API_BASE_URL}/get_available_logs`);
+      if (!res.ok) {
+        const data = await res.json();
+        if (res.status === 404 && data.error === 'log_dir') {
+          throw new Error('Log directory not found. Please configure the log directory path.');
+        }
+        throw new Error('Failed to fetch log files');
+      }
+      const files = await res.json();
+      const filesWithCounts = files.map((file: string) => ({
+        path: file,
+      }));
+      setAvailableFiles(filesWithCounts);
+      if (filesWithCounts.length > 0) {
+        setSelectedFiles([filesWithCounts[0].path]);
+      }
+      setLogDirectoryError(null);
+    } catch (err) {
+      console.error('Error loading log files:', err);
+      setLogDirectoryError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/get_available_logs`)
-      .then(res => res.json())
-      .then(async (files) => {
-        const filesWithCounts = await Promise.all(files.map(async (file) => {
-          return {
-            path: file,
-          };
-        }));
-        setAvailableFiles(filesWithCounts);
-        if (filesWithCounts.length > 0) {
-          setSelectedFiles([filesWithCounts[0].path]);
-        }
-      })
-      .catch(err => console.error('Error loading log files:', err));
-  }, []);
+    refreshFiles();
+  }, [refreshFiles]);
 
   const toggleFile = (file: string) => {
     setSelectedFiles(prev => 
@@ -65,6 +83,8 @@ export const LogFileProvider = ({ children }: { children: React.ReactNode }) => 
       toggleFile,
       selectAllFiles,
       deselectAllFiles,
+      logDirectoryError,
+      refreshFiles,
     }}>
       {children}
     </LogFileContext.Provider>

@@ -14,8 +14,16 @@ export const formatTimestamp = (timestamp: number) => {
 
 export const getPreviewText = (messages: Message[], response: string) => {
     if (messages.length === 0) return '';
+    
     const lastMessage = messages[messages.length - 1].content;
-    const preview = `${lastMessage} → ${response}`;
+    // Handle case where content is an object
+    const messageText = typeof lastMessage === 'string' ? lastMessage : 
+        Array.isArray(lastMessage) ? (lastMessage as any[]).map(block => 
+            block.type === 'text' ? block.text : '[Content]'
+        ).join(' ') : '[Content]';
+        
+    const responseText = response || '[No response]';
+    const preview = `${messageText} → ${responseText}`;
     return preview.length > 100 ? preview.slice(0, 97) + '...' : preview;
 };
 

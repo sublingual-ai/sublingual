@@ -35,13 +35,16 @@ export function Spreadsheet({ columns, data, onRowClick, selectedItem, onColumnR
                         }}
                         onClick={() => onRowClick(item)}
                     >
-                        {columns.map((col, i) => (
-                            <div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
-                                i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
-                            } ${col.align ? `text-${col.align}` : ''} truncate`}>
-                                {col.getValue(item)}
-                            </div>
-                        ))}
+                        {columns.map((col, i) => {
+                            const value = col.getValue(item);
+                            return (
+                                <div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
+                                    i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
+                                } ${col.align ? `text-${col.align}` : ''} truncate`}>
+                                    {value}
+                                </div>
+                            );
+                        })}
                     </div>
                 ))}
             </div>

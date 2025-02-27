@@ -76,16 +76,6 @@ interface ConfirmationDialogState {
 	onCancel: () => void;
 }
 
-interface SidePaneProps {
-	run: LLMRun | null;
-	onClose: () => void;
-	evaluations: Evaluation[];
-	selectedCriteria: string[];
-	metrics: Metrics;
-	onAutoEvaluate: () => void;
-	sessionRuns?: LLMRun[];
-}
-
 type ViewMode = 'runs' | 'sessions';
 
 interface SpreadsheetColumn {
@@ -234,10 +224,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		setFilters([]);
 		setTimeout(() => setIsLoading(false), 100);
 	}, [runs]);
-
-	const toggleRun = (run: LLMRun) => {
-		setSelectedRun(selectedRun?.timestamp === run.timestamp ? null : run);
-	};
 
 	const handleCriteriaChange = (value: string) => {
 		setSelectedCriteria(prev => {
@@ -483,68 +469,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		}
 	};
 
-	const AutoEvaluateButton = ({ runId, run }: { runId: string, run: LLMRun }) => (
-		<Button
-			variant="outline"
-			size="sm"
-			className="flex items-center gap-2"
-			onClick={(e) => {
-				e.stopPropagation();
-				handleAutoEvaluate(run);
-			}}
-		>
-			<Calculator className="w-4 h-4" />
-			<span className="text-xs">Evaluate Metrics</span>
-		</Button>
-	);
-
-<<<<<<< HEAD
-        const getBadgeStyle = (criteria: string, rating: number) => {
-            if (criteria === 'correctness') {
-                if (rating >= 75) return 'bg-green-50 text-green-700';
-                if (rating >= 25) return 'bg-yellow-50 text-yellow-700';
-                if (rating >= 0) return 'bg-orange-50 text-orange-700';
-            }
-            return 'bg-primary-50 text-primary-700';
-        };
-
-        return (
-            <div className="flex gap-2">
-                {selectedCriteria.map((criteria) => {
-                    const evaluation = evaluations.find(e => e.criteria === criteria);
-                    const displayValue = () => {
-                        if (isLoading(criteria)) {
-                            return <Loader2 className="w-3 h-3 animate-spin inline ml-1" />;
-                        }
-                        if (!evaluation || evaluation.status === 'unevaluated') {
-                            return '-';
-                        }
-                        if (evaluation.status === 'evaluation_failed') {
-                            return 'Failed';
-                        }
-                        return `${evaluation.rating}%`;
-                    };
-
-                    const badgeStyle = evaluation?.status === 'evaluated' 
-                        ? getBadgeStyle(criteria, evaluation.rating)
-                        : evaluation?.status === 'evaluation_failed' 
-                            ? 'bg-red-50 text-red-700' 
-                            : 'text-gray-500';
-
-                    return (
-                        <Badge
-                            key={criteria}
-                            variant="outline"
-                            className={`text-xs ${badgeStyle}`}
-                        >
-                            {metrics[criteria].name}: {displayValue()}
-                        </Badge>
-                    );
-                })}
-            </div>
-        );
-    };
-=======
 	const handleEvaluateAll = async () => {
 		// Get all filtered runs that have unevaluated criteria
 		const runsToEvaluate = filteredRuns.filter(run => {
@@ -562,7 +486,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			await handleAutoEvaluate(run);
 		}
 	};
->>>>>>> 8c778fd (you can add evals now)
 
 	const OverwriteConfirmationDialog = () => (
 		<AlertDialog 
@@ -668,8 +591,12 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			name: 'Stack Trace',
 			width: 200,
 			getValue: (run: LLMRun) => {
-				if (!run.stack_info?.filename) return '-';
-				return `${run.stack_info.filename}:${run.stack_info.lineno}`;
+				console.log('Stack Trace:', run.stack_trace);
+				if (!run.stack_trace) return '-';
+				return run.stack_trace.map(frame => {
+					const filename = frame.filename.split('/').pop() || frame.filename;
+					return `${filename}:${frame.lineno}`;
+				}).join('::');
 			}
 		}
 	];
@@ -714,18 +641,32 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			width: columnWidths.metrics[criteria] || 80,
 			align: 'center' as const,
 			getValue: (item: LLMRun | SessionRow) => {
+				console.log('Getting metric value for:', {
+					criteria,
+					item,
+					itemType: 'runs' in item ? 'SessionRow' : 'LLMRun'
+				});
+
 				if ('runs' in item) { // SessionRow
-					const sessionEvals = item.runs.map(run => 
-						evaluations[getRunId(run)]?.find(e => e.criteria === criteria)
-					).filter(e => e?.status === 'evaluated');
+					const sessionEvals = item.runs.map(run => {
+						const runId = getRunId(run);
+						const evaluation = evaluations[runId]?.find(e => e.criteria === criteria);
+						console.log('Session evaluation:', { runId, evaluation });
+						return evaluation;
+					}).filter(e => e?.status === 'evaluated');
 					
+					console.log('Session evaluations:', sessionEvals);
+
 					if (sessionEvals.length === 0) return '-';
 					
 					// Average the ratings
 					const avg = sessionEvals.reduce((sum, e) => sum + (typeof e?.rating === 'number' ? e.rating : 0), 0) / sessionEvals.length;
 					return `${Math.round(avg)}%`;
 				} else { // LLMRun
-					const evaluation = evaluations[getRunId(item)]?.find(e => e.criteria === criteria);
+					const runId = getRunId(item);
+					const evaluation = evaluations[runId]?.find(e => e.criteria === criteria);
+					console.log('Run evaluation:', { runId, evaluation });
+					
 					if (!evaluation || evaluation.status !== 'evaluated') return '-';
 					
 					return metrics[criteria].tool_type === 'bool'

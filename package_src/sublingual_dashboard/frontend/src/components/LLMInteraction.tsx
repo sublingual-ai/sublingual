@@ -103,7 +103,7 @@ const TruncatedContent = ({ content }: { content: string }) => {
   }
   
   return (
-    <div 
+    <div
       onClick={(e) => {
         e.stopPropagation();
         setIsExpanded(true);
@@ -129,13 +129,17 @@ const ObjectDisplay = ({ data }: { data: any }) => {
     if (Array.isArray(value)) {
       if (value.length === 0) return <span className="text-gray-400">[]</span>;
       return (
-        <div className="pl-4 border-l border-blue-200">
-          {value.map((item, i) => (
-            <div key={i} className="text-gray-600">
-              {renderValue(item)}
-              {i < value.length - 1 && ","}
-            </div>
-          ))}
+        <div className="pl-4">
+          [
+          <div className="pl-4">
+            {value.map((item, i) => (
+              <div key={i}>
+                {renderValue(item)}
+                {i < value.length - 1 && ","}
+              </div>
+            ))}
+          </div>
+          ]
         </div>
       );
     }
@@ -154,15 +158,19 @@ const ObjectTree = ({ data }: { data: Record<string, any> }) => {
   }
 
   return (
-    <div className="pl-4 border-l border-blue-200">
-      {Object.entries(data).map(([key, value], i) => (
-        <div key={key} className="text-gray-600">
-          <span className="text-blue-700 font-medium">{key}</span>
-          <span className="text-gray-400">: </span>
-          <ObjectDisplay data={value} />
-          {i < Object.keys(data).length - 1 && ","}
-        </div>
-      ))}
+    <div className="pl-4">
+      {"{"}
+      <div className="pl-4">
+        {Object.entries(data).map(([key, value], i) => (
+          <div key={key}>
+            <span className="text-blue-700 font-medium">{key}</span>
+            <span className="text-gray-400">: </span>
+            <ObjectDisplay data={value} />
+            {i < Object.keys(data).length - 1 && ","}
+          </div>
+        ))}
+      </div>
+      {"}"}
     </div>
   );
 };
@@ -252,19 +260,36 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
             </div>
           );
         } else {
-          return <ObjectDisplay key={index} data={block} />;
+          // For other types of blocks, display as formatted JSON
+          return (
+            <div key={index} className="font-mono text-sm">
+              <ObjectTree data={block} />
+            </div>
+          );
         }
       });
-    } else if (typeof content === 'string') {
+    }
+
+    // If content is a string
+    if (typeof content === 'string') {
       return (
         <div>
           <TruncatedContent content={content} />
         </div>
       );
-    } else if (typeof content === 'object' && content !== null) {
-      return <ObjectDisplay data={content} />;
     }
-    return null;
+
+    // If content is an object
+    if (typeof content === 'object' && content !== null) {
+      return (
+        <div className="font-mono text-sm">
+          <ObjectTree data={content} />
+        </div>
+      );
+    }
+
+    // Fallback for other types
+    return <div>{String(content)}</div>;
   };
 
   return (

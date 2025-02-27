@@ -45,6 +45,18 @@ def initialize_metrics():
         with open(metrics_file, 'w') as f:
             json.dump(DEFAULT_METRICS, f, indent=2)
 
+
+def fetch_metrics_from_disk():
+    metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
+    try:
+        with open(metrics_file, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        initialize_metrics()
+        with open(metrics_file, 'r') as f:
+            return json.load(f)
+
+
 @router.route("/health")
 def health():
     return jsonify({"status": "healthy"})
@@ -56,13 +68,16 @@ def evaluate():
     run_id = data.get("run_id", "")
     run_data = data.get("run", {})
     criteria = data.get("criteria", [])
+    
+    # Get metrics as Python dict
+    metrics = fetch_metrics_from_disk()
 
     results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
         for criterion in criteria:
             messages = run_data["messages"] + [run_data["response"]["choices"][0]["message"]]
             results[criterion] = Evaluation.from_dict(
-                DEFAULT_METRICS[criterion]
+                metrics[criterion]
             ).grade(
                 messages, "gpt-4o-mini"
             )
@@ -161,12 +176,7 @@ def delete_log():
 
 @router.route("/metrics", methods=['GET'])
 def get_metrics():
-    metrics_file = os.path.join(config.project_dir, "metrics", "metrics.json")
     try:
-        with open(metrics_file, 'r') as f:
-            return jsonify(json.load(f))
-    except FileNotFoundError:
-        initialize_metrics()
-        return jsonify(DEFAULT_METRICS)
+        return jsonify(fetch_metrics_from_disk())
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -43,8 +43,11 @@ interface Evaluation {
 }
 
 interface Metric {
-    label: string;
-    description: string;
+    name: string;
+    prompt: string;
+    tool_type: string;
+    min_val: number;
+    max_val: number;
 }
 
 interface Metrics {
@@ -95,7 +98,7 @@ const MetricsSummary = ({
     filteredRuns: LLMRun[];
     evaluations: Record<string, Evaluation[]>;
     selectedCriteria: EvaluationCriteria[];
-    metrics: Metrics;
+    metrics: Record<string, Metric>;
 }) => {
     const metricsData = useMemo(() => {
         return selectedCriteria.map(criteria => {
@@ -130,7 +133,7 @@ const MetricsSummary = ({
             {metricsData.map(metric => (
                 <div key={metric.criteria} className="flex items-center gap-4">
                     <div className="w-40 text-sm text-gray-600">
-                        {metrics[metric.criteria].label}
+                        {metrics[metric.criteria].name}
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between text-sm mb-1">
@@ -191,7 +194,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
     // Replace CRITERIA_LABELS references with metrics state
     const getCriteriaLabel = (criteria: string) => {
-        return metrics[criteria]?.label || criteria;
+        return metrics[criteria]?.name || criteria;
     };
 
     // Get filtered runs based on filters
@@ -467,7 +470,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                             variant="outline"
                             className={`text-xs ${badgeStyle}`}
                         >
-                            {getCriteriaLabel(criteria)}: {displayValue()}
+                            {metrics[criteria].name}: {displayValue()}
                         </Badge>
                     );
                 })}
@@ -534,7 +537,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                                     className="cursor-pointer"
                                                     onClick={() => handleCriteriaChange(criteria)}
                                                 >
-                                                    {metrics[criteria].label}
+                                                    {metrics[criteria].name}
                                                 </Badge>
                                             ))}
                                         </div>
@@ -575,7 +578,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
                                             className="cursor-pointer"
                                             onClick={() => handleCriteriaChange(criteria)}
                                         >
-                                            {metrics[criteria].label}
+                                            {metrics[criteria].name}
                                         </Badge>
                                     ))}
                                 </div>

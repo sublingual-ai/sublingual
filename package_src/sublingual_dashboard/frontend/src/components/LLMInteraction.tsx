@@ -74,20 +74,28 @@ const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
 
 const MESSAGE_TRUNCATE_LENGTH = 500;
 
-function truncateContent(content: string, onClick: () => void) {
-  if (content.length <= MESSAGE_TRUNCATE_LENGTH) return content;
-
+function truncateContent(content: string) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (content.length <= MESSAGE_TRUNCATE_LENGTH || isExpanded) return content;
+  
   const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
   const start = content.slice(0, halfLength);
   const end = content.slice(-halfLength);
 
   return (
     <div
-      onClick={onClick}
+      onClick={() => setIsExpanded(true)}
       className="cursor-pointer hover:bg-gray-50 rounded-md p-2 -mx-2"
     >
       <span>{start}</span>
-      <div className="my-3 text-gray-600 font-medium text-sm">
+      <div 
+        className="my-3 text-gray-600 font-medium text-sm cursor-pointer hover:text-primary-600"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsExpanded(true);
+        }}
+      >
         Click to see full message
       </div>
       <span>{end}</span>
@@ -169,7 +177,6 @@ const isValidGrammar = (grammarResult: any) => {
 };
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
-  const [selectedContent, setSelectedContent] = useState<string | null>(null);
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
 
   const handleShowGrammar = (msgIndex: number) => {
@@ -215,7 +222,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
         if (block.type === 'text') {
           return (
             <div key={index}>
-              {truncateContent(block.text, () => setSelectedContent(block.text))}
+              {truncateContent(block.text)}
             </div>
           );
         } else if (block.type === 'image_url') {
@@ -231,7 +238,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     } else if (typeof content === 'string') {
       return (
         <div>
-          {truncateContent(content, () => setSelectedContent(content))}
+          {truncateContent(content)}
         </div>
       );
     } else if (typeof content === 'object' && content !== null) {
@@ -248,7 +255,6 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           onClose={() => setSelectedContent(null)}
         />
       )}
-
       <div className="space-y-2">
         {run.messages?.map((msg, msgIndex) => {
           const allToolCalls = getToolCalls(msg, msgIndex);
@@ -363,7 +369,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                             }`}
                           onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
                         >
-                          {responseText && truncateContent(responseText, () => setSelectedContent(responseText))}
+                          {responseText && truncateContent(responseText)}
                         </div>
                       ))}
                     </div>

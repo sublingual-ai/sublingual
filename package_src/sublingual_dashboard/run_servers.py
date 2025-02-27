@@ -221,7 +221,15 @@ def main(args):
     # Check if project directory exists
     abs_project_dir = os.path.abspath(args.project_dir)
     if not os.path.exists(abs_project_dir):
-        print(f"Error: Project directory '{abs_project_dir}' does not exist")
+        print(f"\nError: Could not find project directory at '{abs_project_dir}'")
+        print("\nThis could be due to one of these reasons:")
+        print("1. You haven't run an app with `subl ...` yet")
+        print(
+            "2. You're not in the same directory where you originally ran `subl ...` with "
+        )
+        print("\nTo fix this:")
+        print("- Make sure you're in the directory where you ran 'subl' on your app")
+        print("- Or specify a different project directory with --project-dir\n")
         sys.exit(1)
 
     # Check and handle any port conflicts before starting server

@@ -25,6 +25,7 @@ import { OverwriteConfirmationDialog } from "./OverwriteConfirmationDialog";
 import { SidePane } from "./SidePane";
 import { Spreadsheet } from "./Spreadsheet";
 import { getRunId, formatTimestamp, getPreviewText, groupRunsIntoSessions } from "@/utils/metrics";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -719,20 +720,22 @@ export function MetricsView({ runs }: MetricsViewProps) {
 										<label className="text-sm font-medium text-gray-700">
 											Evaluation Criteria
 										</label>
-										<AddMetricDialog onMetricAdded={() => {
-											// Refresh metrics when a new one is added
-											fetch(`${API_BASE_URL}/metrics`)
-												.then(response => response.json())
-												.then(data => setMetrics(data))
-												.catch(error => {
-													console.error('Error fetching metrics:', error);
-													toast({
-														variant: "destructive",
-														title: "Error",
-														description: "Failed to refresh metrics",
+										<ErrorBoundary>
+											<AddMetricDialog onMetricAdded={() => {
+												// Refresh metrics when a new one is added
+												fetch(`${API_BASE_URL}/metrics`)
+													.then(response => response.json())
+													.then(data => setMetrics(data))
+													.catch(error => {
+														console.error('Error fetching metrics:', error);
+														toast({
+															variant: "destructive",
+															title: "Error",
+															description: "Failed to refresh metrics",
+														});
 													});
-												});
-										}} />
+											}} />
+										</ErrorBoundary>
 									</div>
 									<div className="flex gap-2">
 										{Object.keys(metrics).map((criteria) => (
@@ -760,12 +763,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
 												<span className="text-xs">Evaluate All</span>
 											</Button>
 										</div>
-										<MetricsSummary
-											filteredRuns={filteredRuns}
-											evaluations={evaluations}
-											selectedCriteria={selectedCriteria}
-											metrics={metrics}
-										/>
+										<ErrorBoundary>
+											<MetricsSummary
+												filteredRuns={filteredRuns}
+												evaluations={evaluations}
+												selectedCriteria={selectedCriteria}
+												metrics={metrics}
+											/>
+										</ErrorBoundary>
 									</div>
 								</div>
 							</div>
@@ -775,20 +780,22 @@ export function MetricsView({ runs }: MetricsViewProps) {
 									<label className="text-sm font-medium text-gray-700">
 										Evaluation Criteria
 									</label>
-									<AddMetricDialog onMetricAdded={() => {
-										// Refresh metrics when a new one is added
-										fetch(`${API_BASE_URL}/metrics`)
-											.then(response => response.json())
-											.then(data => setMetrics(data))
-											.catch(error => {
-												console.error('Error fetching metrics:', error);
-												toast({
-													variant: "destructive",
-													title: "Error",
-													description: "Failed to refresh metrics",
+									<ErrorBoundary>
+										<AddMetricDialog onMetricAdded={() => {
+											// Refresh metrics when a new one is added
+											fetch(`${API_BASE_URL}/metrics`)
+												.then(response => response.json())
+												.then(data => setMetrics(data))
+												.catch(error => {
+													console.error('Error fetching metrics:', error);
+													toast({
+														variant: "destructive",
+														title: "Error",
+														description: "Failed to refresh metrics",
+													});
 												});
-											});
-									}} />
+										}} />
+									</ErrorBoundary>
 								</div>
 								<div className="flex gap-2">
 									{Object.keys(metrics).map((criteria) => (
@@ -808,37 +815,43 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 					{/* Main Content Box */}
 					<div className="bg-white rounded-lg border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
-						<div className="border-b border-gray-200 p-4 flex-none">
-							<RunsFilter
-								filterOptions={getFilterOptions}
-								filters={filters}
-								onFilterChange={setFilters}
-							/>
-						</div>
+						<ErrorBoundary>
+							<div className="border-b border-gray-200 p-4 flex-none">
+								<RunsFilter
+									filterOptions={getFilterOptions}
+									filters={filters}
+									onFilterChange={setFilters}
+								/>
+							</div>
+						</ErrorBoundary>
 
-						<Spreadsheet
-							columns={currentColumns}
-							data={viewMode === 'runs' ? filteredRuns : sessions}
-							onRowClick={handleRowClick}
-							selectedItem={viewMode === 'runs' ? selectedRun : selectedSession}
-							onColumnResize={handleColumnResize}
-						/>
+						<ErrorBoundary>
+							<Spreadsheet
+								columns={currentColumns}
+								data={viewMode === 'runs' ? filteredRuns : sessions}
+								onRowClick={handleRowClick}
+								selectedItem={viewMode === 'runs' ? selectedRun : selectedSession}
+								onColumnResize={handleColumnResize}
+							/>
+						</ErrorBoundary>
 					</div>
 
 					{/* Side Pane */}
 					{(selectedRun || selectedSession) && (
-						<SidePane
-							run={selectedRun || (selectedSession?.runs[0] ?? null)}
-							onClose={() => viewMode === 'runs' ? setSelectedRun(null) : setSelectedSession(null)}
-							evaluations={selectedRun 
-								? (evaluations[getRunId(selectedRun)] || [])
-								: (selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || [])
-							}
-							selectedCriteria={selectedCriteria}
-							metrics={metrics}
-							onAutoEvaluate={() => selectedRun && handleAutoEvaluate(selectedRun)}
-							sessionRuns={selectedSession?.runs}
-						/>
+						<ErrorBoundary>
+							<SidePane
+								run={selectedRun || (selectedSession?.runs[0] ?? null)}
+								onClose={() => viewMode === 'runs' ? setSelectedRun(null) : setSelectedSession(null)}
+								evaluations={selectedRun 
+									? (evaluations[getRunId(selectedRun)] || [])
+									: (selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || [])
+								}
+								selectedCriteria={selectedCriteria}
+								metrics={metrics}
+								onAutoEvaluate={() => selectedRun && handleAutoEvaluate(selectedRun)}
+								sessionRuns={selectedSession?.runs}
+							/>
+						</ErrorBoundary>
 					)}
 				</>
 			)}

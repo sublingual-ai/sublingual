@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="subl",
-    version="0.1.8",
+    version="0.1.9",
     author="Matthew Tang and Dylan Bowman",
     author_email="founders@sublingual.ai",
     description="No-code LLM production app evals.",
@@ -29,5 +29,6 @@ setup(
         "openai",
         "dotenv",
         "psutil",
+        "anthropic",
     ],
 )

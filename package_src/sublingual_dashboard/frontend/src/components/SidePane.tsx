@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { LLMHeader } from "@/components/LLMHeader";
 import { LLMInteraction } from "@/components/LLMInteraction";
 import { formatTimestamp } from "@/utils/metrics";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface SidePaneProps {
     run: LLMRun;
@@ -17,17 +18,17 @@ interface SidePaneProps {
     sessionRuns?: LLMRun[];
 }
 
-export function SidePane({ 
-    run, 
-    onClose, 
-    evaluations, 
-    selectedCriteria, 
-    metrics, 
-    onAutoEvaluate, 
-    sessionRuns 
+export function SidePane({
+    run,
+    onClose,
+    evaluations,
+    selectedCriteria,
+    metrics,
+    onAutoEvaluate,
+    sessionRuns
 }: SidePaneProps) {
-    return (
-        <div 
+    const content = (
+        <div
             className="fixed inset-y-0 right-0 w-1/2 bg-white border-l border-gray-200 shadow-xl z-50
                 transform transition-transform duration-200 ease-out"
         >
@@ -39,14 +40,14 @@ export function SidePane({
                             {formatTimestamp(run.timestamp)}
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
                         className="p-1 hover:bg-gray-100 rounded-full"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                
+
                 <div className="flex-1 overflow-auto">
                     <div className="p-4 space-y-6">
                         <div className="space-y-2">
@@ -80,13 +81,13 @@ export function SidePane({
                                 <div className="flex flex-wrap gap-2">
                                     {Object.entries(metrics).map(([criteria, metric]) => {
                                         const evaluation = evaluations.find(e => e.criteria === criteria);
-                                        
+
                                         if (!evaluation || evaluation.status !== 'evaluated') return null;
 
-                                        const value = metric.tool_type === 'bool' 
-                                            ? (evaluation.rating ? 'Yes' : 'No') 
-                                            : typeof evaluation.rating === 'number' 
-                                                ? `${evaluation.rating}${metric.tool_type === 'int' ? '%' : ''}` 
+                                        const value = metric.tool_type === 'bool'
+                                            ? (evaluation.rating ? 'Yes' : 'No')
+                                            : typeof evaluation.rating === 'number'
+                                                ? `${evaluation.rating}${metric.tool_type === 'int' ? '%' : ''}`
                                                 : evaluation.rating;
 
                                         return (
@@ -102,7 +103,7 @@ export function SidePane({
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div className="space-y-2">
                             <h3 className="text-sm font-medium text-gray-700">Interaction</h3>
                             <LLMInteraction run={run} />
@@ -111,5 +112,11 @@ export function SidePane({
                 </div>
             </div>
         </div>
+    );
+
+    return (
+        <ErrorBoundary>
+            {content}
+        </ErrorBoundary>
     );
 } 

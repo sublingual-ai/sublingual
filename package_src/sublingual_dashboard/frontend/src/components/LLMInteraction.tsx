@@ -79,25 +79,39 @@ const MESSAGE_TRUNCATE_LENGTH = 500;
 const TruncatedContent = ({ content }: { content: string }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
-  if (content.length <= MESSAGE_TRUNCATE_LENGTH || isExpanded) return <>{content}</>;
+  if (content.length <= MESSAGE_TRUNCATE_LENGTH) return <>{content}</>;
   
   const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
   const start = content.slice(0, halfLength);
   const end = content.slice(-halfLength);
-
-  return (
-    <div
-      onClick={() => setIsExpanded(true)}
-      className="cursor-pointer hover:bg-gray-50 rounded-md p-2 -mx-2"
-    >
-      <span>{start}</span>
+  
+  if (isExpanded) {
+    return (
       <div 
-        className="my-3 text-gray-600 font-medium text-sm cursor-pointer hover:text-primary-600"
         onClick={(e) => {
           e.stopPropagation();
-          setIsExpanded(true);
+          setIsExpanded(false);
         }}
+        className="cursor-pointer group"
       >
+        <span>{content}</span>
+        <div className="my-3 text-primary-400 font-medium text-sm group-hover:text-primary-600">
+          Click to collapse message
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div 
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsExpanded(true);
+      }}
+      className="cursor-pointer group"
+    >
+      <span>{start}</span>
+      <div className="my-3 text-primary-400 font-medium text-sm group-hover:text-primary-600">
         Click to see full message
       </div>
       <span>{end}</span>
@@ -180,6 +194,7 @@ const isValidGrammar = (grammarResult: any) => {
 
 export function LLMInteraction({ run }: LLMInteractionProps) {
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
 
   if (!run) return null;
 

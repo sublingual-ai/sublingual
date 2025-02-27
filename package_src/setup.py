@@ -29,5 +29,6 @@ setup(
         "openai",
         "dotenv",
         "psutil",
+        "anthropic",
     ],
 )

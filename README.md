@@ -29,16 +29,16 @@ The coolest thing? You don't have to change any of your code!
 🔗 Easy integration: No code changes necessary
 
 ## 🪄 How does it work?
-We automatically patch the OpenAI client to log all LLM calls and responses, then analyze the runtime code to extract the prompt template that you used as well. All of this so you don't have to change any of your code. When you don't want to log, you can just run your script as usual without `subl`, and the patch will not be applied or affect your code at all.
+We automatically patch the OpenAI/Anthropic client to log all LLM calls and responses, then analyze the runtime code to extract the prompt template that you used as well. All of this so you don't have to change any of your code. When you don't want to log, you can just run your script as usual without `subl`, and the patch will not be applied or affect your code at all.
     
 
 ## Supported LLM Providers and Frameworks
 
- 🤖 OpenAI Client (Async + Sync)
+ ✅ OpenAI Client (Async + Sync)
  
- 🤖 Anthropic Client (Async + Sync)
+ ✅ Anthropic Client (Async + Sync)
  
- ⏳ LangChain coming soon
+ ⏳ LangChain calls to ChatOpenAI or ChatAnthropic are logged, but we're working on full LangChain support to trace the entire workflow!
 
  ⚠️ Other LLM clients will not be logged, but hot-swapped urls are supported. e.g. Gemini
  ```python

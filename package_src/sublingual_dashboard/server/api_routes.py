@@ -5,6 +5,7 @@ import json
 from flask import Flask, jsonify, Blueprint
 import config
 from evaluations.evaluation import Evaluation, initialize_client
+from typing import Dict, List, Optional
 
 router = Blueprint('api', __name__)
 
@@ -57,6 +58,43 @@ def fetch_metrics_from_disk():
             return json.load(f)
 
 
+def get_evaluations_file_path() -> str:
+    """Get the path to the evaluations storage file."""
+    eval_dir = os.path.join(config.project_dir, "metrics")
+    if not os.path.exists(eval_dir):
+        os.makedirs(eval_dir)
+    return os.path.join(eval_dir, "evaluations.json")
+
+def load_evaluations() -> Dict:
+    """Load existing evaluations from file."""
+    file_path = get_evaluations_file_path()
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_evaluations(evaluations: Dict) -> None:
+    """Save evaluations to file."""
+    file_path = get_evaluations_file_path()
+    with open(file_path, 'w') as f:
+        json.dump(evaluations, f, indent=2)
+
+def check_existing_evaluations(run_id: str, criteria: List[str]) -> Dict[str, List[str]]:
+    """Check which criteria already have evaluations for the given run."""
+    existing_evals = load_evaluations()
+    if run_id not in existing_evals:
+        return {}
+    
+    existing_criteria = {}
+    for criterion in criteria:
+        if criterion in existing_evals[run_id]:
+            if criterion not in existing_criteria:
+                existing_criteria[criterion] = []
+            existing_criteria[criterion].append(run_id)
+    
+    return existing_criteria
+
 @router.route("/health")
 def health():
     return jsonify({"status": "healthy"})
@@ -68,10 +106,17 @@ def evaluate():
     run_id = data.get("run_id", "")
     run_data = data.get("run", {})
     criteria = data.get("criteria", [])
+    check_existing = data.get("check_existing", False)
+    force = data.get("force", False)
+    
+    # If just checking existing evaluations, return that info
+    if check_existing:
+        existing = check_existing_evaluations(run_id, criteria)
+        return jsonify({"existing_evaluations": existing})
     
     # Get metrics as Python dict
     metrics = fetch_metrics_from_disk()
-
+    
     results = {criterion: "<NO_SCORE>" for criterion in criteria}
     try:
         for criterion in criteria:
@@ -81,6 +126,15 @@ def evaluate():
             ).grade(
                 messages, "gpt-4o-mini"
             )
+        
+        # Save results if force is True
+        if force:
+            evaluations = load_evaluations()
+            if run_id not in evaluations:
+                evaluations[run_id] = {}
+            evaluations[run_id].update(results)
+            save_evaluations(evaluations)
+            
         return jsonify({"scores": results})
     except AttributeError as e:
         if "NoneType" in str(e):
@@ -222,5 +276,15 @@ def add_metric():
             json.dump(metrics, f, indent=2)
             
         return jsonify(metrics)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/evaluations", methods=['GET'])
+def get_evaluations():
+    """Return all stored evaluations."""
+    try:
+        evals = load_evaluations()
+        return jsonify(evals)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

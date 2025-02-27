@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { LLMRun, Message } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronDown, Calculator, Loader2, ChevronRight, Minus } from "lucide-react";
+import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
 	Select,
@@ -37,6 +37,16 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -74,6 +84,27 @@ interface NewMetric {
 	tool_type: string;
 	min_val: number;
 	max_val: number;
+}
+
+interface EvaluationResponse {
+	scores: Record<string, any>;
+	existing_evaluations?: Record<string, string[]>;
+}
+
+interface ConfirmationDialogState {
+	isOpen: boolean;
+	existingEvals: Record<string, string[]>;
+	onConfirm: () => void;
+	onCancel: () => void;
+}
+
+interface SidePaneProps {
+	run: LLMRun;
+	onClose: () => void;
+	evaluations: Evaluation[];
+	selectedCriteria: string[];
+	metrics: Metrics;
+	onAutoEvaluate: () => void;
 }
 
 const getPreviewText = (messages: Message[], response: string) => {
@@ -374,15 +405,118 @@ function AddMetricDialog({ onMetricAdded }: { onMetricAdded: () => void }) {
 	);
 }
 
+const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAutoEvaluate }: SidePaneProps) => {
+	console.log('SidePane evaluations:', evaluations);
+	console.log('SidePane selectedCriteria:', selectedCriteria);
+	console.log('SidePane metrics:', metrics);
+	
+	return (
+		<div 
+			className="fixed inset-y-0 right-0 w-1/2 bg-white border-l border-gray-200 shadow-xl z-50
+				transform transition-transform duration-200 ease-out"
+		>
+			<div className="h-full flex flex-col">
+				<div className="flex items-center justify-between p-4 border-b border-gray-200">
+					<div className="space-y-1">
+						<h2 className="text-lg font-semibold">Run Details</h2>
+						<div className="text-sm text-gray-500">
+							{new Date(run.timestamp * 1000).toLocaleString()}
+						</div>
+					</div>
+					<button 
+						onClick={onClose}
+						className="p-1 hover:bg-gray-100 rounded-full"
+					>
+						<X className="w-5 h-5" />
+					</button>
+				</div>
+				
+				<div className="flex-1 overflow-auto">
+					<div className="p-4 space-y-6">
+						{/* Basic Info Section */}
+						<div className="space-y-2">
+							<h3 className="text-sm font-medium text-gray-700">Basic Info</h3>
+							<div className="bg-gray-50 p-3 rounded-lg space-y-2">
+								<div className="text-sm">
+									<LLMHeader run={run} />
+								</div>
+								{run.stack_info && (
+									<Badge variant="outline" className="text-xs text-primary-700">
+										{run.stack_info.filename}:{run.stack_info.lineno}
+									</Badge>
+								)}
+							</div>
+						</div>
+
+						{/* Evaluations Section */}
+						<div className="space-y-2">
+							<div className="flex items-center justify-between">
+								<h3 className="text-sm font-medium text-gray-700">Evaluations</h3>
+								<Button
+									variant="outline"
+									size="sm"
+									className="flex items-center gap-2"
+									onClick={onAutoEvaluate}
+								>
+									<Calculator className="w-4 h-4" />
+									<span className="text-xs">Evaluate Metrics</span>
+								</Button>
+							</div>
+							<div className="bg-gray-50 p-3 rounded-lg">
+								<div className="flex flex-wrap gap-2">
+									{Object.entries(metrics).map(([criteria, metric]) => {
+										const evaluation = evaluations.find(e => e.criteria === criteria);
+										
+										// Skip if there's no evaluation or if it's not in an evaluated state
+										if (!evaluation || evaluation.status !== 'evaluated') return null;
+
+										const value = metric.tool_type === 'bool' 
+											? (evaluation.rating ? 'Yes' : 'No') 
+											: typeof evaluation.rating === 'number' 
+												? `${evaluation.rating}${metric.tool_type === 'int' ? '%' : ''}` 
+												: evaluation.rating;
+
+										return (
+											<Badge
+												key={criteria}
+												variant="outline"
+												className="bg-primary-50/50 border-primary-100 text-primary-700"
+											>
+												{metric.name}: {value}
+											</Badge>
+										);
+									}).filter(Boolean)}
+								</div>
+							</div>
+						</div>
+						
+						{/* Interaction Section */}
+						<div className="space-y-2">
+							<h3 className="text-sm font-medium text-gray-700">Interaction</h3>
+							<LLMInteraction run={run} />
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+};
+
 export function MetricsView({ runs }: MetricsViewProps) {
 	const [isLoading, setIsLoading] = useState(false);
-	const [expandedRuns, setExpandedRuns] = useState<string[]>([]);
 	const [selectedCriteria, setSelectedCriteria] = useState<EvaluationCriteria[]>([]);
 	const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
 	const [loadingStates, setLoadingStates] = useState<LoadingState>({});
 	const [filters, setFilters] = useState<Filter[]>([]);
 	const { toast } = useToast();
 	const [metrics, setMetrics] = useState<Metrics>({});
+	const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState>({
+		isOpen: false,
+		existingEvals: {},
+		onConfirm: () => {},
+		onCancel: () => {}
+	});
+	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
 
 	// Add this useEffect to fetch metrics
 	useEffect(() => {
@@ -404,6 +538,40 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 		fetchMetrics();
 	}, []);
+
+	// Add this useEffect after the metrics fetch useEffect
+	useEffect(() => {
+		const fetchExistingEvaluations = async () => {
+			try {
+				const response = await fetch(`${API_BASE_URL}/evaluations`);
+				if (!response.ok) throw new Error('Failed to fetch evaluations');
+				const data = await response.json();
+				console.log('Fetched evaluations:', data);  // Add this debug log
+				
+				// Convert the loaded evaluations into our frontend format
+				const formattedEvals: Record<string, Evaluation[]> = {};
+				Object.entries(data).forEach(([runId, runEvals]: [string, Record<string, any>]) => {
+					formattedEvals[runId] = Object.entries(runEvals).map(([criteria, rating]) => ({
+						criteria,
+						rating,
+						status: 'evaluated' as EvaluationStatus
+					}));
+				});
+				
+				console.log('Formatted evaluations:', formattedEvals);  // Add this debug log
+				setEvaluations(formattedEvals);
+			} catch (error) {
+				console.error('Error fetching evaluations:', error);
+				toast({
+					variant: "destructive",
+					title: "Error", 
+					description: "Failed to load existing evaluations",
+				});
+			}
+		};
+
+		fetchExistingEvaluations();
+	}, []);  // Empty dependency array means this runs once on mount
 
 	// Get filtered runs based on filters
 	const filteredRuns = useMemo(() => {
@@ -427,7 +595,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		});
 	}, [runs, filters]);
 
-	// Clean up evaluations when filters or runs change
+	// Update this effect to merge with existing evaluations instead of replacing
 	useEffect(() => {
 		setEvaluations(prev => {
 			const newEvals: Record<string, Evaluation[]> = {};
@@ -441,24 +609,16 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		});
 	}, [filteredRuns]);
 
-	// Reset states when runs change
+	// Update this effect to preserve loaded evaluations
 	useEffect(() => {
 		setIsLoading(true);
-		setExpandedRuns([]);
 		setSelectedCriteria([]);
-		setEvaluations({});
-		setLoadingStates({});
 		setFilters([]);
 		setTimeout(() => setIsLoading(false), 100);
 	}, [runs]);
 
 	const toggleRun = (run: LLMRun) => {
-		const runId = getRunId(run);
-		setExpandedRuns(prev =>
-			prev.includes(runId)
-				? prev.filter(id => id !== runId)
-				: [...prev, runId]
-		);
+		setSelectedRun(selectedRun?.timestamp === run.timestamp ? null : run);
 	};
 
 	const handleCriteriaChange = (value: EvaluationCriteria) => {
@@ -591,7 +751,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		const runId = getRunId(run);
 		try {
 			const existingEvals = evaluations[runId] || [];
-
 			const criteriaToEvaluate = selectedCriteria.filter(criteria =>
 				!existingEvals.some(evaluation =>
 					evaluation.criteria === criteria && evaluation.status === 'evaluated'
@@ -613,7 +772,8 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				body: JSON.stringify({
 					run_id: runId,
 					run: run,
-					criteria: criteriaToEvaluate
+					criteria: criteriaToEvaluate,
+					check_existing: true
 				})
 			});
 
@@ -629,21 +789,48 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				throw new Error('Evaluation request failed');
 			}
 
-			const data = await response.json();
+			const data: EvaluationResponse = await response.json();
+			
+			if (data.existing_evaluations && Object.keys(data.existing_evaluations).length > 0) {
+				const confirmed = await new Promise<boolean>((resolve) => {
+					setConfirmationDialog({
+						isOpen: true,
+						existingEvals: data.existing_evaluations!,
+						onConfirm: () => resolve(true),
+						onCancel: () => resolve(false),
+					});
+				});
+
+				if (!confirmed) {
+					return;
+				}
+			}
+
+			const saveResponse = await fetch(`${API_BASE_URL}/evaluate`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					run_id: runId,
+					run: run,
+					criteria: criteriaToEvaluate,
+					force: true
+				})
+			});
+
+			if (!saveResponse.ok) throw new Error('Failed to save evaluations');
+			const saveData = await saveResponse.json();
 
 			setEvaluations(prev => {
 				const currentEvals = prev[runId] || [];
-				const newEvals = criteriaToEvaluate.map(criteria => {
-					const score = data.scores[criteria];
-					const metric = metrics[criteria];
-					return {
-						criteria,
-						rating: score === "<NO_SCORE>" ? 0 : 
-							metric.tool_type === 'bool' ? score === 'true' || score === true :
-							parseInt(score, 10),
-						status: (score === "<NO_SCORE>" ? 'evaluation_failed' : 'evaluated') as EvaluationStatus
-					};
-				});
+				const newEvals = criteriaToEvaluate.map(criteria => ({
+					criteria,
+					rating: saveData.scores[criteria] === "<NO_SCORE>" ? 0 : 
+						metrics[criteria].tool_type === 'bool' ? saveData.scores[criteria] === 'true' || saveData.scores[criteria] === true :
+						parseInt(saveData.scores[criteria], 10),
+					status: (saveData.scores[criteria] === "<NO_SCORE>" ? 'evaluation_failed' : 'evaluated') as EvaluationStatus
+				}));
 
 				return {
 					...prev,
@@ -759,8 +946,45 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	};
 >>>>>>> 8c778fd (you can add evals now)
 
+	const OverwriteConfirmationDialog = () => (
+		<AlertDialog 
+			open={confirmationDialog.isOpen} 
+			onOpenChange={(open) => {
+				if (!open) confirmationDialog.onCancel();
+			}}
+		>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Overwrite Existing Evaluations?</AlertDialogTitle>
+					<div className="space-y-2 text-sm text-muted-foreground">
+						<AlertDialogDescription>
+							The following criteria already have evaluations:
+						</AlertDialogDescription>
+						<ul className="list-disc list-inside">
+							{Object.entries(confirmationDialog.existingEvals).map(([criteria, runs]) => (
+								<li key={criteria}>
+									{metrics[criteria].name} ({runs.length} evaluation{runs.length !== 1 ? 's' : ''})
+								</li>
+							))}
+						</ul>
+						<AlertDialogDescription>
+							Do you want to overwrite these evaluations?
+						</AlertDialogDescription>
+					</div>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel onClick={confirmationDialog.onCancel}>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={confirmationDialog.onConfirm}>
+						Yes, Overwrite
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+
 	return (
 		<div className="space-y-4 h-full flex flex-col">
+			<OverwriteConfirmationDialog />
 			{isLoading ? (
 				<div className="flex-1 flex items-center justify-center">
 					<Loader2 className="w-8 h-8 animate-spin text-primary-600" />
@@ -878,62 +1102,59 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 						<ScrollArea className="flex-1">
 							<div className="divide-y divide-gray-100">
-								{filteredRuns.map((run, index) => {
+								{filteredRuns.map((run) => {
 									const runId = getRunId(run);
-									const isExpanded = expandedRuns.includes(runId);
+									const isSelected = selectedRun && getRunId(selectedRun) === getRunId(run);
 									const runEvaluations = evaluations[runId] || [];
 
 									return (
-										<div key={runId} className="transition-colors">
-											<div
-												className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-												onClick={() => toggleRun(run)}
-											>
-												<div className="flex items-center justify-between">
-													<div className="flex-1">
-														<div className="flex items-center space-x-2">
-															{isExpanded ? (
-																<ChevronDown className="w-4 h-4 text-gray-500" />
-															) : (
-																<ChevronRight className="w-4 h-4 text-gray-500" />
-															)}
-															<h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-																{getPreviewText(run.messages, run.response_texts[0])}
-															</h3>
-														</div>
-														<LLMHeader run={run} />
-														<div className="flex items-center space-x-2 mt-1">
-															{run.stack_info && (
-																<Badge variant="outline" className="text-xs text-primary-700">
-																	{run.stack_info.filename}:{run.stack_info.lineno}
-																</Badge>
-															)}
-														</div>
-														{selectedCriteria.length > 0 && (
-															<div className="flex items-center space-x-4 mt-2">
-																<ScoreDisplay evaluations={runEvaluations} runId={runId} />
-																<AutoEvaluateButton runId={runId} run={run} />
-															</div>
+										<div 
+											key={runId} 
+											className={`p-4 cursor-pointer transition-colors duration-200
+												${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+											onClick={() => toggleRun(run)}
+										>
+											<div className="flex items-center justify-between">
+												<div className="flex-1">
+													<h3 className="text-sm font-medium text-gray-900 line-clamp-1">
+														{getPreviewText(run.messages, run.response_texts[0])}
+													</h3>
+													<LLMHeader run={run} />
+													<div className="flex items-center space-x-2 mt-1">
+														{run.stack_info && (
+															<Badge variant="outline" className="text-xs text-primary-700">
+																{run.stack_info.filename}:{run.stack_info.lineno}
+															</Badge>
 														)}
 													</div>
-													<span className="text-xs text-gray-500">
-														{new Date(run.timestamp * 1000).toLocaleString()}
-													</span>
+													{selectedCriteria.length > 0 && (
+														<div className="flex items-center space-x-4 mt-2">
+															<ScoreDisplay evaluations={runEvaluations} runId={runId} />
+														</div>
+													)}
 												</div>
+												<span className="text-xs text-gray-500">
+													{new Date(run.timestamp * 1000).toLocaleString()}
+												</span>
 											</div>
-											{isExpanded && (
-												<div className="px-4 pb-4">
-													<div className="space-y-2">
-														<LLMInteraction run={run} />
-													</div>
-												</div>
-											)}
 										</div>
 									);
 								})}
 							</div>
 						</ScrollArea>
 					</div>
+
+					{/* Side Pane */}
+					{selectedRun && (
+						<SidePane
+							run={selectedRun}
+							onClose={() => setSelectedRun(null)}
+							evaluations={evaluations[getRunId(selectedRun)] || []}
+							selectedCriteria={selectedCriteria}
+							metrics={metrics}
+							onAutoEvaluate={() => handleAutoEvaluate(selectedRun)}
+						/>
+					)}
 				</>
 			)}
 		</div>

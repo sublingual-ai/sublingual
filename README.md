@@ -35,7 +35,9 @@ We automatically patch the OpenAI client to log all LLM calls and responses, the
 ## Supported LLM Providers and Frameworks
 
  🤖 OpenAI Client (Async + Sync)
+ 
  🤖 Anthropic Client (Async + Sync)
+ 
  ⏳ LangChain coming soon
 
  ⚠️ Other LLM clients will not be logged, but hot-swapped urls are supported. e.g. Gemini

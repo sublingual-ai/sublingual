@@ -47,6 +47,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { SessionsList } from "@/components/SessionsList";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -105,7 +106,46 @@ interface SidePaneProps {
 	selectedCriteria: string[];
 	metrics: Metrics;
 	onAutoEvaluate: () => void;
+	sessionRuns?: LLMRun[];
 }
+
+type ViewMode = 'runs' | 'sessions';
+
+interface SpreadsheetColumn {
+	id: string;
+	name: string;
+	width: number;
+	getValue: (item: any) => string | number;
+	align?: 'left' | 'center' | 'right';
+}
+
+interface SpreadsheetProps {
+	columns: SpreadsheetColumn[];
+	data: any[];
+	onRowClick: (item: any) => void;
+	selectedItem: any | null;
+	onColumnResize: (columnId: string, event: React.MouseEvent) => void;
+}
+
+interface SessionRow {
+	sessionId: string;
+	runs: LLMRun[];
+	firstCall: number;
+	lastCall: number;
+	callCount: number;
+	totalTokens: number;
+}
+
+const formatTimestamp = (timestamp: number) => {
+	const date = new Date(timestamp * 1000);
+	return date.toLocaleString('en-US', {
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		hour12: false
+	}).replace(',', '');
+};
 
 const getPreviewText = (messages: Message[], response: string) => {
 	if (messages.length === 0) return '';
@@ -405,7 +445,7 @@ function AddMetricDialog({ onMetricAdded }: { onMetricAdded: () => void }) {
 	);
 }
 
-const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAutoEvaluate }: SidePaneProps) => {
+const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAutoEvaluate, sessionRuns }: SidePaneProps) => {
 	console.log('SidePane evaluations:', evaluations);
 	console.log('SidePane selectedCriteria:', selectedCriteria);
 	console.log('SidePane metrics:', metrics);
@@ -420,7 +460,7 @@ const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAuto
 					<div className="space-y-1">
 						<h2 className="text-lg font-semibold">Run Details</h2>
 						<div className="text-sm text-gray-500">
-							{new Date(run.timestamp * 1000).toLocaleString()}
+							{formatTimestamp(run.timestamp)}
 						</div>
 					</div>
 					<button 
@@ -502,6 +542,143 @@ const SidePane = ({ run, onClose, evaluations, selectedCriteria, metrics, onAuto
 	);
 };
 
+const TableHeader = ({ 
+	metrics, 
+	selectedCriteria,
+	onColumnResize 
+}: { 
+	metrics: Metrics, 
+	selectedCriteria: string[],
+	onColumnResize: (column: string, event: React.MouseEvent) => void 
+}) => {
+	return (
+		<div className="grid border-b border-[#E2E3E3] bg-white sticky top-0 z-10 shadow-sm"
+			style={{
+				gridTemplateColumns: `160px 1fr 120px 80px ${selectedCriteria.map(() => '80px').join(' ')}`
+			}}
+		>
+			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
+				<div className="flex-1">Timestamp</div>
+				<div 
+					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
+					onMouseDown={(e) => onColumnResize('timestamp', e)}
+				/>
+			</div>
+			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
+				<div className="flex-1">Message</div>
+				<div 
+					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
+					onMouseDown={(e) => onColumnResize('message', e)}
+				/>
+			</div>
+			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
+				<div className="flex-1">Model</div>
+				<div 
+					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
+					onMouseDown={(e) => onColumnResize('model', e)}
+				/>
+			</div>
+			<div className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-[#E2E3E3] flex items-center">
+				<div className="flex-1">Temp</div>
+				<div 
+					className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
+					onMouseDown={(e) => onColumnResize('temp', e)}
+				/>
+			</div>
+			{selectedCriteria.map((criteria, i) => (
+				<div key={criteria} className={`px-3 py-2 text-xs font-semibold text-gray-900 text-center flex items-center ${
+					i !== selectedCriteria.length - 1 ? 'border-r border-[#E2E3E3]' : ''
+				}`}>
+					<div className="flex-1">{metrics[criteria].name}</div>
+					{i !== selectedCriteria.length - 1 && (
+						<div 
+							className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded" 
+							onMouseDown={(e) => onColumnResize(criteria, e)}
+						/>
+					)}
+				</div>
+			))}
+		</div>
+	);
+};
+
+const Spreadsheet = ({ columns, data, onRowClick, selectedItem, onColumnResize }: SpreadsheetProps) => {
+	return (
+		<div className="flex-1 overflow-auto">
+			<div className="grid border-b border-[#E2E3E3] bg-white sticky top-0 z-10 shadow-sm"
+				style={{
+					gridTemplateColumns: columns.map(col => `${col.width}px`).join(' ')
+				}}
+			>
+				{columns.map((col, i) => (
+					<div key={col.id} className={`px-3 py-2 text-xs font-semibold text-gray-900 flex items-center ${
+						i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
+					}`}>
+						<div className="flex-1">{col.name}</div>
+						{i !== columns.length - 1 && (
+							<div 
+								className="w-1 h-full cursor-col-resize hover:bg-gray-200 rounded"
+								onMouseDown={(e) => onColumnResize(col.id, e)}
+							/>
+						)}
+					</div>
+				))}
+			</div>
+
+			<div className="divide-y divide-gray-100">
+				{data.map((item, rowIndex) => (
+					<div 
+						key={rowIndex}
+						className={`grid hover:bg-[#F3F3F3] cursor-pointer ${
+							selectedItem === item ? 'bg-[#E8F0FE]' : ''
+						}`}
+						style={{
+							gridTemplateColumns: columns.map(col => `${col.width}px`).join(' ')
+						}}
+						onClick={() => onRowClick(item)}
+					>
+						{columns.map((col, i) => (
+							<div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
+								i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
+							} ${col.align ? `text-${col.align}` : ''} truncate`}>
+								{col.getValue(item)}
+							</div>
+						))}
+					</div>
+				))}
+			</div>
+		</div>
+	);
+};
+
+// Add this helper function to group runs into sessions
+const groupRunsIntoSessions = (runs: LLMRun[]): SessionRow[] => {
+	const sessionMap = new Map<string, SessionRow>();
+	
+	runs.forEach(run => {
+		const sessionId = run.session_id || getRunId(run);
+		const existing = sessionMap.get(sessionId);
+		
+		if (existing) {
+			existing.runs.push(run);
+			existing.lastCall = Math.max(existing.lastCall, run.timestamp);
+			existing.callCount += 1;
+			existing.totalTokens += run.usage.total_tokens;
+		} else {
+			sessionMap.set(sessionId, {
+				sessionId,
+				runs: [run],
+				firstCall: run.timestamp,
+				lastCall: run.timestamp,
+				callCount: 1,
+				totalTokens: run.usage.total_tokens
+			});
+		}
+	});
+	
+	return Array.from(sessionMap.values());
+};
+
 export function MetricsView({ runs }: MetricsViewProps) {
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedCriteria, setSelectedCriteria] = useState<EvaluationCriteria[]>([]);
@@ -517,6 +694,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		onCancel: () => {}
 	});
 	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
+	const [columnWidths, setColumnWidths] = useState({
+		timestamp: 160,
+		message: 500,
+		model: 120,
+		temp: 80,
+		metrics: {} as Record<string, number>
+	});
+	const [viewMode, setViewMode] = useState<ViewMode>('runs');
 
 	// Add this useEffect to fetch metrics
 	useEffect(() => {
@@ -982,8 +1167,177 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		</AlertDialog>
 	);
 
+	const handleColumnResize = (column: string, event: React.MouseEvent) => {
+		const startX = event.pageX;
+		const startWidth = column === 'metrics' 
+			? (columnWidths.metrics[event.currentTarget.getAttribute('data-metric') || ''] || 80)
+			: columnWidths[column as keyof typeof columnWidths] as number;
+
+		const handleMouseMove = (e: MouseEvent) => {
+			const diff = e.pageX - startX;
+			const newWidth = Math.max(50, startWidth + diff);
+			
+			setColumnWidths(prev => {
+				if (column === 'metrics') {
+					const metric = event.currentTarget.getAttribute('data-metric');
+					if (!metric) return prev;
+					return {
+						...prev,
+						metrics: {
+							...prev.metrics,
+							[metric]: newWidth
+						}
+					};
+				}
+				return {
+					...prev,
+					[column]: newWidth
+				};
+			});
+		};
+
+		const handleMouseUp = () => {
+			document.removeEventListener('mousemove', handleMouseMove);
+			document.removeEventListener('mouseup', handleMouseUp);
+		};
+
+		document.addEventListener('mousemove', handleMouseMove);
+		document.addEventListener('mouseup', handleMouseUp);
+	};
+
+	const runColumns: SpreadsheetColumn[] = [
+		{
+			id: 'timestamp',
+			name: 'Timestamp',
+			width: 160,
+			getValue: (run: LLMRun) => formatTimestamp(run.timestamp)
+		},
+		{
+			id: 'message',
+			name: 'Message',
+			width: 500,
+			getValue: (run: LLMRun) => getPreviewText(run.messages, run.response_texts[0])
+		},
+		{
+			id: 'model',
+			name: 'Model',
+			width: 120,
+			getValue: (run: LLMRun) => run.response?.model || '-'
+		},
+		{
+			id: 'temp',
+			name: 'Temp',
+			width: 80,
+			getValue: (run: LLMRun) => run.call_parameters?.temperature?.toString() || '-'
+		}
+	];
+
+	const sessionColumns: SpreadsheetColumn[] = [
+		{
+			id: 'timestamp',
+			name: 'First Call',
+			width: 160,
+			getValue: (session: SessionRow) => formatTimestamp(session.firstCall)
+		},
+		{
+			id: 'lastCall',
+			name: 'Last Call',
+			width: 160,
+			getValue: (session: SessionRow) => formatTimestamp(session.lastCall)
+		},
+		{
+			id: 'calls',
+			name: 'Calls',
+			width: 80,
+			getValue: (session: SessionRow) => session.callCount?.toString() || '0',
+			align: 'center'
+		},
+		{
+			id: 'tokens',
+			name: 'Tokens',
+			width: 80,
+			getValue: (session: SessionRow) => session.totalTokens?.toString() || '0',
+			align: 'center'
+		}
+	];
+
+	// Add session state
+	const sessions = useMemo(() => groupRunsIntoSessions(filteredRuns), [filteredRuns]);
+	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
+
+	// Update columns to include metrics
+	const getMetricColumns = (): SpreadsheetColumn[] => 
+		selectedCriteria.map(criteria => ({
+			id: criteria,
+			name: metrics[criteria].name,
+			width: columnWidths.metrics[criteria] || 80,
+			align: 'center' as const,
+			getValue: (item: LLMRun | SessionRow) => {
+				if ('runs' in item) { // SessionRow
+					const sessionEvals = item.runs.map(run => 
+						evaluations[getRunId(run)]?.find(e => e.criteria === criteria)
+					).filter(e => e?.status === 'evaluated');
+					
+					if (sessionEvals.length === 0) return '-';
+					
+					// Average the ratings
+					const avg = sessionEvals.reduce((sum, e) => sum + (typeof e?.rating === 'number' ? e.rating : 0), 0) / sessionEvals.length;
+					return `${Math.round(avg)}%`;
+				} else { // LLMRun
+					const evaluation = evaluations[getRunId(item)]?.find(e => e.criteria === criteria);
+					if (!evaluation || evaluation.status !== 'evaluated') return '-';
+					
+					return metrics[criteria].tool_type === 'bool'
+						? (evaluation.rating ? 'Yes' : 'No')
+						: `${evaluation.rating}${metrics[criteria].tool_type === 'int' ? '%' : ''}`;
+				}
+			}
+		}));
+
+	const currentColumns = useMemo(() => {
+		const baseColumns = viewMode === 'runs' ? runColumns : sessionColumns;
+		return [...baseColumns, ...getMetricColumns()];
+	}, [viewMode, selectedCriteria, metrics, columnWidths]);
+
+	const handleRowClick = (item: LLMRun | SessionRow) => {
+		if ('runs' in item) {
+			setSelectedSession(selectedSession?.sessionId === item.sessionId ? null : item);
+			setSelectedRun(null);
+		} else {
+			setSelectedRun(selectedRun?.timestamp === item.timestamp ? null : item);
+			setSelectedSession(null);
+		}
+	};
+
 	return (
 		<div className="space-y-4 h-full flex flex-col">
+			<div className="flex-none">
+				<div className="bg-white rounded-lg border border-gray-100 p-2">
+					<div className="flex gap-2">
+						<button
+							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+								viewMode === 'runs' 
+									? 'bg-primary-50 text-primary-900' 
+									: 'text-gray-600 hover:bg-gray-50'
+							}`}
+							onClick={() => setViewMode('runs')}
+						>
+							Run View
+						</button>
+						<button
+							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+								viewMode === 'sessions' 
+									? 'bg-primary-50 text-primary-900' 
+									: 'text-gray-600 hover:bg-gray-50'
+							}`}
+							onClick={() => setViewMode('sessions')}
+						>
+							Session View
+						</button>
+					</div>
+				</div>
+			</div>
+
 			<OverwriteConfirmationDialog />
 			{isLoading ? (
 				<div className="flex-1 flex items-center justify-center">
@@ -1087,12 +1441,9 @@ export function MetricsView({ runs }: MetricsViewProps) {
 						)}
 					</div>
 
-					{/* Main Runs List Box */}
-					<div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
+					{/* Main Content Box */}
+					<div className="bg-white rounded-lg border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
 						<div className="border-b border-gray-200 p-4 flex-none">
-							<div className="flex items-center justify-between mb-4">
-								<h2 className="text-lg font-semibold text-gray-900">LLM Runs</h2>
-							</div>
 							<RunsFilter
 								filterOptions={getFilterOptions}
 								filters={filters}
@@ -1100,59 +1451,28 @@ export function MetricsView({ runs }: MetricsViewProps) {
 							/>
 						</div>
 
-						<ScrollArea className="flex-1">
-							<div className="divide-y divide-gray-100">
-								{filteredRuns.map((run) => {
-									const runId = getRunId(run);
-									const isSelected = selectedRun && getRunId(selectedRun) === getRunId(run);
-									const runEvaluations = evaluations[runId] || [];
-
-									return (
-										<div 
-											key={runId} 
-											className={`p-4 cursor-pointer transition-colors duration-200
-												${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-											onClick={() => toggleRun(run)}
-										>
-											<div className="flex items-center justify-between">
-												<div className="flex-1">
-													<h3 className="text-sm font-medium text-gray-900 line-clamp-1">
-														{getPreviewText(run.messages, run.response_texts[0])}
-													</h3>
-													<LLMHeader run={run} />
-													<div className="flex items-center space-x-2 mt-1">
-														{run.stack_info && (
-															<Badge variant="outline" className="text-xs text-primary-700">
-																{run.stack_info.filename}:{run.stack_info.lineno}
-															</Badge>
-														)}
-													</div>
-													{selectedCriteria.length > 0 && (
-														<div className="flex items-center space-x-4 mt-2">
-															<ScoreDisplay evaluations={runEvaluations} runId={runId} />
-														</div>
-													)}
-												</div>
-												<span className="text-xs text-gray-500">
-													{new Date(run.timestamp * 1000).toLocaleString()}
-												</span>
-											</div>
-										</div>
-									);
-								})}
-							</div>
-						</ScrollArea>
+						<Spreadsheet
+							columns={currentColumns}
+							data={viewMode === 'runs' ? filteredRuns : sessions}
+							onRowClick={handleRowClick}
+							selectedItem={viewMode === 'runs' ? selectedRun : selectedSession}
+							onColumnResize={handleColumnResize}
+						/>
 					</div>
 
 					{/* Side Pane */}
-					{selectedRun && (
+					{(selectedRun || selectedSession) && (
 						<SidePane
-							run={selectedRun}
-							onClose={() => setSelectedRun(null)}
-							evaluations={evaluations[getRunId(selectedRun)] || []}
+							run={selectedRun || selectedSession?.runs[0]}
+							onClose={() => viewMode === 'runs' ? setSelectedRun(null) : setSelectedSession(null)}
+							evaluations={selectedRun 
+								? evaluations[getRunId(selectedRun)] || []
+								: selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || []
+							}
 							selectedCriteria={selectedCriteria}
 							metrics={metrics}
-							onAutoEvaluate={() => handleAutoEvaluate(selectedRun)}
+							onAutoEvaluate={() => selectedRun && handleAutoEvaluate(selectedRun)}
+							sessionRuns={selectedSession?.runs}
 						/>
 					)}
 				</>

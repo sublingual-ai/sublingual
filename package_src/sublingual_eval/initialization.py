@@ -11,6 +11,10 @@ from sublingual_eval.logging.django_logger import (
     setup_django_wsgi_logging,
 )
 from sublingual_eval.logging.flask_logger import setup_flask_logging
+from sublingual_eval.logging.anthropic_logger import (
+    setup_anthropic_logging,
+    setup_anthropic_async_logging,
+)
 import os
 import sysconfig
 
@@ -23,6 +27,7 @@ PTH_TEXT = dedent(
         pass
     """
 ).strip()
+
 
 ### THIS IS NOT USED ANYMORE, ONLY USED TO MANUALLY WRITE .PTH AT RUN TIME
 def handle_pth():
@@ -43,8 +48,6 @@ def handle_pth():
         print(f"\033[96m└─\033[0m Error: {str(e)}")
 
 
-
-
 def create_subl_logs_dir():
     if not os.path.exists("subl_logs"):
         os.makedirs("subl_logs")
@@ -58,6 +61,7 @@ def init():
         or os.getenv("SUBL_PATCH_FASTAPI", "0") == "1"
         or os.getenv("SUBL_PATCH_DJANGO", "0") == "1"
         or os.getenv("SUBL_PATCH_FLASK", "0") == "1"
+        or os.getenv("SUBL_PATCH_ANTHROPIC", "0") == "1"
     ):
         subl_logs_path = os.path.join(os.getcwd(), ".sublingual", "logs")
         if not os.path.exists(os.path.join(os.getcwd(), ".sublingual")):
@@ -78,3 +82,6 @@ def init():
     if os.getenv("SUBL_PATCH_FLASK", "0") == "1":
         os.environ["FLASK_RUN_FROM_RELOADER"] = "false"
         setup_flask_logging()
+    if os.getenv("SUBL_PATCH_ANTHROPIC", "0") == "1":
+        setup_anthropic_logging(subl_logs_path)
+        setup_anthropic_async_logging(subl_logs_path)

@@ -77,7 +77,7 @@ interface ConfirmationDialogState {
 }
 
 interface SidePaneProps {
-	run: LLMRun;
+	run: LLMRun | null;
 	onClose: () => void;
 	evaluations: Evaluation[];
 	selectedCriteria: string[];
@@ -662,6 +662,15 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			name: 'Temp',
 			width: 80,
 			getValue: (run: LLMRun) => run.call_parameters?.temperature?.toString() || '-'
+		},
+		{
+			id: 'stack_trace',
+			name: 'Stack Trace',
+			width: 200,
+			getValue: (run: LLMRun) => {
+				if (!run.stack_info?.filename) return '-';
+				return `${run.stack_info.filename}:${run.stack_info.lineno}`;
+			}
 		}
 	];
 
@@ -895,11 +904,11 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					{/* Side Pane */}
 					{(selectedRun || selectedSession) && (
 						<SidePane
-							run={selectedRun || selectedSession?.runs[0]}
+							run={selectedRun || (selectedSession?.runs[0] ?? null)}
 							onClose={() => viewMode === 'runs' ? setSelectedRun(null) : setSelectedSession(null)}
 							evaluations={selectedRun 
-								? evaluations[getRunId(selectedRun)] || []
-								: selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || []
+								? (evaluations[getRunId(selectedRun)] || [])
+								: (selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || [])
 							}
 							selectedCriteria={selectedCriteria}
 							metrics={metrics}

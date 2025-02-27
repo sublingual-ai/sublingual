@@ -8,9 +8,10 @@ import { parseGrammarFormat, GrammarNode } from "@/utils/grammarParser";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { GrammarTree } from "@/components/GrammarTree";
 import { formatElapsedTime } from "@/utils/format";
+import { formatTimestamp } from "@/utils/metrics";
 
 interface LLMInteractionProps {
-  run: LLMRun;
+  run: LLMRun | null;
 }
 
 interface FullMessagePopupProps {
@@ -74,10 +75,11 @@ const FullMessagePopup = ({ content, onClose }: FullMessagePopupProps) => {
 
 const MESSAGE_TRUNCATE_LENGTH = 500;
 
-function truncateContent(content: string) {
+// Move truncateContent to be a proper React component
+const TruncatedContent = ({ content }: { content: string }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
-  if (content.length <= MESSAGE_TRUNCATE_LENGTH || isExpanded) return content;
+  if (content.length <= MESSAGE_TRUNCATE_LENGTH || isExpanded) return <>{content}</>;
   
   const halfLength = Math.floor(MESSAGE_TRUNCATE_LENGTH / 2);
   const start = content.slice(0, halfLength);
@@ -101,7 +103,7 @@ function truncateContent(content: string) {
       <span>{end}</span>
     </div>
   );
-}
+};
 
 const ObjectDisplay = ({ data }: { data: any }) => {
   const renderValue = (value: any): JSX.Element => {
@@ -179,6 +181,8 @@ const isValidGrammar = (grammarResult: any) => {
 export function LLMInteraction({ run }: LLMInteractionProps) {
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
 
+  if (!run) return null;
+
   const handleShowGrammar = (msgIndex: number) => {
     if (run.grammar_result?.[msgIndex]) {
       if (grammarTrees[msgIndex]) {
@@ -214,6 +218,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     return [...messageToolCalls, ...responseToolCalls];
   };
 
+  // Update renderContent to use the new component
   const renderContent = (content: any, msg: Message) => {
     if (!content) return null;
 
@@ -222,7 +227,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
         if (block.type === 'text') {
           return (
             <div key={index}>
-              {truncateContent(block.text)}
+              {block.text && <TruncatedContent content={block.text} />}
             </div>
           );
         } else if (block.type === 'image_url') {
@@ -238,7 +243,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     } else if (typeof content === 'string') {
       return (
         <div>
-          {truncateContent(content)}
+          <TruncatedContent content={content} />
         </div>
       );
     } else if (typeof content === 'object' && content !== null) {
@@ -369,7 +374,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                             }`}
                           onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
                         >
-                          {responseText && truncateContent(responseText)}
+                          {responseText && <TruncatedContent content={responseText} />}
                         </div>
                       ))}
                     </div>

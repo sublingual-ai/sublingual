@@ -523,42 +523,22 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		</AlertDialog>
 	);
 
-	const handleColumnResize = (column: string, event: React.MouseEvent) => {
-		const startX = event.pageX;
-		const startWidth = column === 'metrics' 
-			? (columnWidths.metrics[event.currentTarget.getAttribute('data-metric') || ''] || 80)
-			: columnWidths[column as keyof typeof columnWidths] as number;
-
-		const handleMouseMove = (e: MouseEvent) => {
-			const diff = e.pageX - startX;
-			const newWidth = Math.max(50, startWidth + diff);
-			
-			setColumnWidths(prev => {
-				if (column === 'metrics') {
-					const metric = event.currentTarget.getAttribute('data-metric');
-					if (!metric) return prev;
-					return {
-						...prev,
-						metrics: {
-							...prev.metrics,
-							[metric]: newWidth
-						}
-					};
-				}
+	const handleColumnResize = (columnId: string, newWidth: number) => {
+		setColumnWidths(prev => {
+			if (selectedCriteria.includes(columnId)) {
 				return {
 					...prev,
-					[column]: newWidth
+					metrics: {
+						...prev.metrics,
+						[columnId]: newWidth
+					}
 				};
-			});
-		};
-
-		const handleMouseUp = () => {
-			document.removeEventListener('mousemove', handleMouseMove);
-			document.removeEventListener('mouseup', handleMouseUp);
-		};
-
-		document.addEventListener('mousemove', handleMouseMove);
-		document.addEventListener('mouseup', handleMouseUp);
+			}
+			return {
+				...prev,
+				[columnId]: newWidth
+			};
+		});
 	};
 
 	const runColumns: SpreadsheetColumn[] = [
@@ -591,7 +571,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			name: 'Stack Trace',
 			width: 200,
 			getValue: (run: LLMRun) => {
-				console.log('Stack Trace:', run.stack_trace);
 				if (!run.stack_trace) return '-';
 				return run.stack_trace.map(frame => {
 					const filename = frame.filename.split('/').pop() || frame.filename;
@@ -677,9 +656,13 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		}));
 
 	const currentColumns = useMemo(() => {
-		const baseColumns = viewMode === 'runs' ? runColumns : sessionColumns;
+		const baseColumns = viewMode === 'runs' ? runColumns.map(col => ({
+			...col,
+			width: (columnWidths[col.id as keyof typeof columnWidths] as number) || col.width
+		})) : sessionColumns;
+		
 		return [...baseColumns, ...getMetricColumns()];
-	}, [viewMode, selectedCriteria, metrics, columnWidths]);
+	}, [viewMode, selectedCriteria, metrics, columnWidths, runColumns, sessionColumns]);
 
 	const handleRowClick = (item: LLMRun | SessionRow) => {
 		if ('runs' in item) {

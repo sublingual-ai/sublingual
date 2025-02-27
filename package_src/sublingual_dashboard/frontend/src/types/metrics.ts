@@ -53,5 +53,5 @@ export interface SpreadsheetProps {
     data: any[];
     onRowClick: (item: any) => void;
     selectedItem: any | null;
-    onColumnResize: (columnId: string, event: React.MouseEvent) => void;
+    onColumnResize: (columnId: string, newWidth: number) => void;
 } 

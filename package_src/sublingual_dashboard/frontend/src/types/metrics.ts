@@ -63,4 +63,11 @@ export interface SpreadsheetProps {
         runIds: string[];
     }) => void;
     isItemStaged: (item: any) => boolean;
+}
+
+export type ViewMode = 'runs' | 'sessions';
+
+export interface StagedItems {
+    runs: Set<string>;
+    sessions: Set<string>;
 } 

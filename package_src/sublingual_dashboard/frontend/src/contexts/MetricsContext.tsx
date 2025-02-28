@@ -3,11 +3,11 @@ import { ViewMode, StagedItems } from '@/types/metrics';
 
 interface MetricsContextType {
     stagedItems: StagedItems;
-    setStagedItems: (items: StagedItems) => void;
+    setStagedItems: (items: StagedItems | ((prev: StagedItems) => StagedItems)) => void;
     viewMode: ViewMode;
     setViewMode: (mode: ViewMode) => void;
     selectedCriteria: string[];
-    setSelectedCriteria: (criteria: string[]) => void;
+    setSelectedCriteria: (criteria: string[] | ((prev: string[]) => string[])) => void;
 }
 
 const MetricsContext = createContext<MetricsContextType | undefined>(undefined);

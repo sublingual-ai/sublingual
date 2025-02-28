@@ -1,10 +1,8 @@
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
+from flask import Blueprint, jsonify, request
 import os
 import json
-from flask import Flask, jsonify, Blueprint
 import config
-from evaluations.evaluation import Evaluation, initialize_client
+from evaluations.evaluation import Evaluation, chat_with_messages
 from typing import Dict, List, Optional
 
 router = Blueprint('api', __name__)
@@ -287,4 +285,25 @@ def get_evaluations():
         evals = load_evaluations()
         return jsonify(evals)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@router.route("/chatwith", methods=["POST"])
+def chat():
+    try:
+        data = request.json
+        messages = data.get("messages", [])
+        
+        response_text = chat_with_messages(messages)
+        return jsonify({
+            "message": response_text
+        })
+    except ValueError as e:
+        print("ValueError:", str(e))
+        return jsonify({
+            "error": "OpenAI client not initialized",
+            "details": str(e)
+        }), 503
+    except Exception as e:
+        print("Exception:", str(e))
         return jsonify({"error": str(e)}), 500

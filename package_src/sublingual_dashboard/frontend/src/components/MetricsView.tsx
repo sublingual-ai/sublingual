@@ -232,7 +232,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	}, [runs]);
 
 	const handleCriteriaChange = (value: string) => {
-		setSelectedCriteria(prev => {
+		setSelectedCriteria((prev: string[]) => {
 			if (prev.includes(value)) {
 				return prev.filter(c => c !== value);
 			}
@@ -939,13 +939,29 @@ export function MetricsView({ runs }: MetricsViewProps) {
 											variant="outline"
 											size="sm"
 											className="flex items-center gap-2"
-											onClick={() => navigate('/chat', { 
-												state: { 
-													stagedItems,
-													viewMode,
-													selectedCriteria 
-												} 
-											})}
+											onClick={() => {
+												// First get all the staged runs
+												const stagedRunsData = [...stagedItems.runs].map(runId => {
+													const run = filteredRuns.find(r => getRunId(r) === runId);
+													if (!run) return null;
+													return {
+														id: runId,
+														messages: run.messages,
+														response: run.response.choices[0].message
+													};
+												}).filter(Boolean); // Remove any nulls
+
+												navigate('/chat', { 
+													state: { 
+														stagedItems: {
+															runs: stagedRunsData, // Send the actual run data array
+															sessions: stagedItems.sessions
+														},
+														viewMode,
+														selectedCriteria 
+													} 
+												});
+											}}
 											disabled={stagedItems[viewMode].size === 0}
 										>
 											<MessageSquare className="w-4 h-4" />

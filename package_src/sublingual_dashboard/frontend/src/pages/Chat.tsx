@@ -3,34 +3,98 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useMetrics } from "@/contexts/MetricsContext";
+import { useNavigate, useLocation } from "react-router-dom";
+import { API_BASE_URL } from '@/config';
 
 interface Message {
-    role: 'user' | 'assistant';
+    role: 'user' | 'assistant' | 'system';
     content: string;
+}
+
+interface RunData {
+    messages: Array<{role: string, content: string}>;
+    response_texts: string[];
+    // add other fields as needed
+}
+
+interface StagedRun {
+    id: string;
+    messages: Array<{role: string, content: string}>;
+    response: {role: string, content: string};
 }
 
 export default function Chat() {
     const navigate = useNavigate();
-    const { stagedItems, viewMode, selectedCriteria } = useMetrics();
+    const location = useLocation();
+    const routerState = location.state || {};
+    
+    const { stagedItems = { runs: [], sessions: new Set<string>() } } = routerState;
+    
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim()) return;
 
-        // Add user message
         const userMessage: Message = { role: 'user', content: input };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
+        setIsLoading(true);
 
-        // Add bot response
-        setTimeout(() => {
-            const botMessage: Message = { role: 'assistant', content: 'boink' };
+        try {
+            // Ensure stagedItems.runs is an array before using flatMap
+            const runs = Array.isArray(stagedItems.runs) ? stagedItems.runs : [];
+            
+            // Convert each run into a single message containing the full conversation
+            const stagedMessages = runs.map(run => {
+                // Convert the run's messages into a conversation string
+                const conversation = [
+                    ...run.messages,
+                    run.response
+                ]
+                .filter(msg => msg && msg.content != null)
+                .map(msg => `${msg.role}: ${msg.content}`)
+                .join('\n');
+                
+                return {
+                    role: 'user' as const,
+                    content: conversation
+                };
+            });
+            
+            // Construct prefix messages
+            const prefixMessages: Message[] = [
+                { role: 'system', content: '' },
+                ...stagedMessages
+            ];
+
+            const allMessages = [...prefixMessages, ...messages, userMessage];
+
+            const response = await fetch(`${API_BASE_URL}/chatwith`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messages: allMessages
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to get response');
+            
+            const data = await response.json();
+            const botMessage: Message = { 
+                role: 'assistant', 
+                content: data.message 
+            };
             setMessages(prev => [...prev, botMessage]);
-        }, 500);
+        } catch (error) {
+            console.error('Chat error:', error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -70,6 +134,17 @@ export default function Chat() {
                                 </div>
                             </div>
                         ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="max-w-[80%] rounded-lg px-4 py-1.5 bg-gray-100">
+                                    <div className="flex space-x-2">
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 

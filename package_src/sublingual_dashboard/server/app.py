@@ -8,15 +8,15 @@ from flask_cors import CORS
 from evaluations.evaluation import initialize_client
 import config
 import logging
-from api_routes import router, initialize_metrics  # Add initialize_metrics to import
+from api_routes import router, initialize_metrics
 
 app = Flask(__name__)
 CORS(app)
 
-from api_routes import router
-
 app.register_blueprint(router, url_prefix="/api")
 
+# Add this debug print
+print("Registered routes:", [f"{rule.rule} {rule.methods}" for rule in app.url_map.iter_rules()])
 
 # Serve static files from frontend_build directory
 @app.route("/", defaults={"path": ""})

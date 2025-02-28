@@ -22,9 +22,11 @@ export function LLMHeader({ run }: LLMHeaderProps) {
         <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
           {run.response.usage.total_tokens} tokens
         </Badge>
-        <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
-          n: {run.call_parameters.n}
-        </Badge>
+        {run.call_parameters.n && (
+          <Badge variant="secondary" className="text-xs bg-primary-50 text-primary-700">
+            n: {run.call_parameters.n}
+          </Badge>
+        )}
         {toolCalls && (
           <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">
             <Wrench size={12} className="mr-1 inline" />
@@ -40,7 +42,7 @@ export function LLMHeader({ run }: LLMHeaderProps) {
           }}
         >
           <Settings2 size={12} className="mr-1 inline" />
-          All Parameters
+          Show All Parameters
         </Badge>
       </div>
 

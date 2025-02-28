@@ -61,6 +61,20 @@ export function SidePane({
                                         {run.stack_info.filename}:{run.stack_info.lineno}
                                     </Badge>
                                 )}
+                                {run.response?.usage && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {run.response.usage.prompt_tokens != null && (
+                                            <Badge variant="outline" className="text-xs text-primary-700">
+                                                Input: {run.response.usage.prompt_tokens} tokens
+                                            </Badge>
+                                        )}
+                                        {run.response.usage.completion_tokens != null && (
+                                            <Badge variant="outline" className="text-xs text-primary-700">
+                                                Output: {run.response.usage.completion_tokens} tokens
+                                            </Badge>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

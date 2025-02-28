@@ -67,6 +67,8 @@ export interface LLMRun {
     model: string;
     usage: {
       total_tokens: number;
+      prompt_tokens: number;
+      completion_tokens: number;
       completion_ms?: number;
     };
     choices: Choice[];

@@ -718,7 +718,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 								<div className="p-4">
 									<div className="flex justify-between items-center mb-2">
 										<label className="text-sm font-medium text-gray-700">
-											Evaluation Criteria
+											Select Evaluation Metrics
 										</label>
 										<ErrorBoundary>
 											<AddMetricDialog onMetricAdded={() => {
@@ -778,7 +778,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 							<div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-fade-in">
 								<div className="flex justify-between items-center mb-2">
 									<label className="text-sm font-medium text-gray-700">
-										Evaluation Criteria
+										Select Evaluation Metrics
 									</label>
 									<ErrorBoundary>
 										<AddMetricDialog onMetricAdded={() => {

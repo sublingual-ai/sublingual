@@ -1,8 +1,18 @@
 import { SpreadsheetProps } from "@/types/metrics";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 
 export function Spreadsheet({ columns, data, onRowClick, selectedItem, onColumnResize }: SpreadsheetProps) {
     const resizingRef = useRef<{ columnId: string; startWidth: number; startX: number } | null>(null);
+    const MIN_COLUMN_WIDTH = 100; // Minimum width to prevent text clipping
+    
+    // Ensure columns have adequate width when columns are added
+    useEffect(() => {
+        columns.forEach(col => {
+            if (col.width < MIN_COLUMN_WIDTH) {
+                onColumnResize(col.id, MIN_COLUMN_WIDTH);
+            }
+        });
+    }, [columns.length]); // Only run when the number of columns changes
 
     const handleMouseMove = (e: MouseEvent) => {
         if (!resizingRef.current) return;
@@ -69,7 +79,7 @@ export function Spreadsheet({ columns, data, onRowClick, selectedItem, onColumnR
                             return (
                                 <div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
                                     i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
-                                } ${col.align ? `text-${col.align}` : ''} truncate`}>
+                                } ${col.align ? `text-${col.align}` : ''} overflow-hidden text-ellipsis whitespace-nowrap`}>
                                     {value}
                                 </div>
                             );

@@ -12,21 +12,21 @@ router = Blueprint('api', __name__)
 # Add near the top with other constants
 DEFAULT_METRICS = {
     "correctness": {
-        "name": "correctness",
+        "name": "Correctness",
         "prompt": "Evaluate the correctness of the response.",
         "tool_type": "int",
         "min_val": 0,
         "max_val": 100
     },
     "user_sentiment": {
-        "name": "user_sentiment",
+        "name": "User Sentiment",
         "prompt": "Evaluate the user's sentiment towards the response.",
         "tool_type": "int",
         "min_val": 0,
         "max_val": 100
     },
     "system_prompt_obedience": {
-        "name": "system_prompt_obedience",
+        "name": "System Prompt Obedience",
         "prompt": "Evaluate the system prompt obedience of the response.",
         "tool_type": "int",
         "min_val": 0,

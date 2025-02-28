@@ -127,6 +127,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		temp: 80,
 		metrics: {} as Record<string, number>
 	});
+	const [isEvaluatingAll, setIsEvaluatingAll] = useState(false);
 
 	const { toast } = useToast();
 
@@ -481,10 +482,18 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				)
 			);
 		});
-
-		// Evaluate each filtered run
-		for (const run of runsToEvaluate) {
-			await handleAutoEvaluate(run);
+		
+		setIsEvaluatingAll(true);
+		try {
+			// Evaluate each filtered run
+			for (const run of runsToEvaluate) {
+				await handleAutoEvaluate(run);
+			}
+		} finally {
+			// Add a small delay to ensure the loading state is visible
+			setTimeout(() => {
+				setIsEvaluatingAll(false);
+			}, 500);
 		}
 	};
 
@@ -758,9 +767,16 @@ export function MetricsView({ runs }: MetricsViewProps) {
 												size="sm"
 												className="flex items-center gap-2"
 												onClick={handleEvaluateAll}
+												disabled={isEvaluatingAll || selectedCriteria.length === 0}
 											>
-												<Calculator className="w-4 h-4" />
-												<span className="text-xs">Evaluate All</span>
+												{isEvaluatingAll ? (
+													<Loader2 className="w-4 h-4 animate-spin" />
+												) : (
+													<Calculator className="w-4 h-4" />
+												)}
+												<span className="text-xs">
+													{isEvaluatingAll ? "Evaluating..." : "Evaluate metrics on ALL entries"}
+												</span>
 											</Button>
 										</div>
 										<ErrorBoundary>

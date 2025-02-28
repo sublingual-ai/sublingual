@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 interface Message {
     role: 'user' | 'assistant' | 'system';
     content: string;
+    id?: string;
 }
 
 interface RunData {
@@ -29,6 +30,15 @@ const getPreviewText = (run: StagedRun) => {
     const lastMessage = [...run.messages, run.response].filter(msg => msg?.content).pop();
     if (!lastMessage) return 'Empty conversation';
     return lastMessage.content.slice(0, 50) + (lastMessage.content.length > 50 ? '...' : '');
+};
+
+const getTotalTokens = (runs: StagedRun[]) => {
+    return runs.reduce((total, run) => {
+        // Count tokens in all messages and response
+        const allMessages = [...run.messages, run.response];
+        return total + allMessages.reduce((msgTotal, msg) => 
+            msgTotal + (msg?.content?.length || 0) / 4, 0); // Rough approximation of tokens
+    }, 0);
 };
 
 export default function Chat() {
@@ -62,12 +72,10 @@ export default function Chat() {
         setIsLoading(true);
 
         try {
-            // Ensure stagedItems.runs is an array before using flatMap
             const runs = Array.isArray(stagedItems.runs) ? stagedItems.runs : [];
             
-            // Convert each run into a single message containing the full conversation
-            const stagedMessages = runs.map(run => {
-                // Convert the run's messages into a conversation string
+            // Update the staged messages mapping to use slugs
+            const stagedMessages = runs.map((run) => {
                 const conversation = [
                     ...run.messages,
                     run.response
@@ -78,17 +86,18 @@ export default function Chat() {
                 
                 return {
                     role: 'user' as const,
-                    content: conversation
+                    content: conversation,
+                    id: run.id // Just use the existing ID
                 };
             });
             
-            // Construct prefix messages
-            const prefixMessages: Message[] = [
-                { role: 'system', content: '' },
-                ...stagedMessages
-            ];
+            // Update system prompt to include citation instructions
+            const systemPrompt = {
+                role: 'system' as const,
+                content: `You are an assistant helping a user navigate the logs from their LLM app. You will be provided all of the logs as "user" messages in the history. You can reference previous conversations using citations. Use <inline>[id]</inline> for inline citations or <block>[id]</block> for block citations. You must use this exact format. Only include the ID here--do not repeat the content of the cited item. Example: <block>b872e181-7241-49d7-b0d7-cff9314954d2</block>.`
+            };
 
-            const allMessages = [...prefixMessages, ...messages, userMessage];
+            const allMessages = [systemPrompt, ...stagedMessages, systemPrompt, ...messages, userMessage];  // sysprompt twice xd
 
             const response = await fetch(`${API_BASE_URL}/chatwith`, {
                 method: 'POST',
@@ -103,9 +112,54 @@ export default function Chat() {
             if (!response.ok) throw new Error('Failed to get response');
             
             const data = await response.json();
+            
+            // Process citations in the response
+            let processedContent = data.message;
+            
+            // Extract all inline tag contents
+            const inlineMatches = processedContent.matchAll(/<inline>(.*?)<\/inline>/gs);
+            for (const match of inlineMatches) {
+                const fullMatch = match[0];
+                const content = match[1]?.trim();
+                console.log('Inline content found:', content);
+                
+                // Check if it's a valid citation format
+                const citationMatch = content.match(/\s*\[(.*?)\]\s*/);
+                if (citationMatch) {
+                    const id = citationMatch[1]?.trim();
+                    console.log('Valid inline citation ID:', id);
+                }
+                
+                processedContent = processedContent.replace(fullMatch, '');
+            }
+
+            // Extract all block tag contents
+            const blockMatches = processedContent.matchAll(/<block>(.*?)<\/block>/gs);
+            for (const match of blockMatches) {
+                const fullMatch = match[0];
+                const content = match[1]?.trim();
+                console.log('Block content found:', content);
+                
+                // Check if it's a valid citation format
+                const citationMatch = content.match(/\s*\[(.*?)\]\s*/);
+                if (citationMatch) {
+                    const id = citationMatch[1]?.trim();
+                    console.log('Valid block citation ID:', id);
+                }
+                
+                processedContent = processedContent.replace(fullMatch, '');
+            }
+
+            // Clean up any remaining whitespace artifacts
+            processedContent = processedContent
+                .replace(/\s+/g, ' ')  // Collapse multiple spaces
+                .replace(/\s+\./g, '.') // Clean up spaces before periods
+                .replace(/\s+,/g, ',') // Clean up spaces before commas
+                .trim();
+
             const botMessage: Message = { 
                 role: 'assistant', 
-                content: data.message 
+                content: processedContent
             };
             setMessages(prev => [...prev, botMessage]);
         } catch (error) {
@@ -115,6 +169,29 @@ export default function Chat() {
         }
     };
 
+    // Update the message rendering to include IDs
+    const renderMessage = (message: Message, index: number) => (
+        <div
+            key={index}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+            <div
+                className={`max-w-[80%] rounded-lg px-4 py-1.5 ${
+                    message.role === 'user'
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-100 text-gray-900'
+                }`}
+            >
+                {message.content}
+                {message.id && (
+                    <div className="text-xs opacity-50 mt-1">
+                        ID: {message.id}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <DashboardLayout showLogsSidebar={false}>
             <div className="h-screen flex">
@@ -122,9 +199,15 @@ export default function Chat() {
                 <div className="w-64 border-r bg-gray-50 flex flex-col">
                     <div className="p-4 border-b border-gray-100">
                         <h2 className="text-lg font-semibold text-gray-900">Staged Messages</h2>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {stagedRuns.length} messages staged
-                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">
+                                {stagedRuns.length} messages staged
+                            </span>
+                            <span className="text-xs text-gray-500">•</span>
+                            <span className="text-xs text-gray-500">
+                                {Math.round(getTotalTokens(stagedRuns)).toLocaleString()} tokens
+                            </span>
+                        </div>
                     </div>
                     <ScrollArea className="flex-1">
                         <table className="w-full">
@@ -215,22 +298,7 @@ export default function Chat() {
                     {/* Messages Area */}
                     <div className="flex-1 overflow-auto p-4">
                         <div className="max-w-4xl mx-auto w-full space-y-2">
-                            {messages.map((message, i) => (
-                                <div
-                                    key={i}
-                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div
-                                        className={`max-w-[80%] rounded-lg px-4 py-1.5 ${
-                                            message.role === 'user'
-                                                ? 'bg-primary-500 text-white'
-                                                : 'bg-gray-100 text-gray-900'
-                                        }`}
-                                    >
-                                        {message.content}
-                                    </div>
-                                </div>
-                            ))}
+                            {messages.map((message, i) => renderMessage(message, i))}
                             {isLoading && (
                                 <div className="flex justify-start">
                                     <div className="max-w-[80%] rounded-lg px-4 py-1.5 bg-gray-100">

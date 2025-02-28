@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { LLMRun, Message } from "@/types/logs";
-import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X } from "lucide-react";
+import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { API_BASE_URL } from '@/config';
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SessionsList } from "@/components/SessionsList";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useNavigate } from "react-router-dom";
 
 import { MetricsSummary } from "./MetricsSummary";
 import { AddMetricDialog } from "./AddMetricDialog";
@@ -26,6 +27,7 @@ import { SidePane } from "./SidePane";
 import { Spreadsheet } from "./Spreadsheet";
 import { getRunId, formatTimestamp, getPreviewText, groupRunsIntoSessions } from "@/utils/metrics";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useMetrics } from "@/contexts/MetricsContext";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -106,15 +108,14 @@ interface StagedItems {
 }
 
 export function MetricsView({ runs }: MetricsViewProps) {
+	const { stagedItems, setStagedItems, viewMode, setViewMode, selectedCriteria, setSelectedCriteria } = useMetrics();
 	const [isLoading, setIsLoading] = useState(false);
-	const [selectedCriteria, setSelectedCriteria] = useState<string[]>([]);
 	const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
 	const [loadingStates, setLoadingStates] = useState<LoadingState>({});
 	const [filters, setFilters] = useState<Filter[]>([]);
 	const [metrics, setMetrics] = useState<Metrics>({});
 	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
 	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
-	const [viewMode, setViewMode] = useState<ViewMode>('runs');
 	const [columnWidths, setColumnWidths] = useState({
 		timestamp: 160,
 		message: 500,
@@ -123,12 +124,9 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		metrics: {} as Record<string, number>
 	});
 	const [isEvaluatingAll, setIsEvaluatingAll] = useState(false);
-	const [stagedItems, setStagedItems] = useState<StagedItems>({
-		runs: new Set(),
-		sessions: new Set()
-	});
 
 	const { toast } = useToast();
+	const navigate = useNavigate();
 
 	// Fetch metrics on mount
 	useEffect(() => {
@@ -500,7 +498,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		const runsToEvaluate = filteredRuns.filter(run => {
 			const runId = getRunId(run);
 			const isStaged = stagedItems.runs.has(runId) || 
-				stagedItems.sessions.has(sessions.find(s => s.runs.includes(run))?.sessionId || '');
+				stagedItems.sessions.has(sessions.find(s => s.runs.includes(run))?.sessionId || '';
 			
 			if (!isStaged) return false;
 
@@ -926,16 +924,34 @@ export function MetricsView({ runs }: MetricsViewProps) {
 											{stagedItems[viewMode].size} items staged ({getTotalTokens().toLocaleString()} tokens)
 										</span>
 									</div>
-									<Button
-										variant="outline"
-										size="sm"
-										className="flex items-center gap-2"
-										onClick={handleEvaluateAll}
-										disabled={stagedItems[viewMode].size === 0 || selectedCriteria.length === 0}
-									>
-										<Calculator className="w-4 h-4" />
-										<span className="text-xs">Evaluate Staged</span>
-									</Button>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2"
+											onClick={handleEvaluateAll}
+											disabled={stagedItems[viewMode].size === 0 || selectedCriteria.length === 0}
+										>
+											<Calculator className="w-4 h-4" />
+											<span className="text-xs">Evaluate Staged</span>
+										</Button>
+										<Button
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2"
+											onClick={() => navigate('/chat', { 
+												state: { 
+													stagedItems,
+													viewMode,
+													selectedCriteria 
+												} 
+											})}
+											disabled={stagedItems[viewMode].size === 0}
+										>
+											<MessageSquare className="w-4 h-4" />
+											<span className="text-xs">Chat with Data</span>
+										</Button>
+									</div>
 								</div>
 								<RunsFilter
 									filterOptions={getFilterOptions}

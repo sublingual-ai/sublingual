@@ -60,8 +60,9 @@ client = OpenAI(
  ⚠️ Streaming responses are not currently supported for logging
 
 ## Running Evals
-We currently offer LLM as judge evals using OpenAI models. We have prebuilt Correctness, System Prompt Obedeience, and User response sentiment metrics that you can use, but we also offer a way for you to define your own judging criteria inside the dashboard.
-You must provide your own api key if you want to use this feature, and can do so by setting the OPENAI_API_KEY environment variable, or just placing it in a .env in the same directory that you run `subl server` in.
+⚖️ We currently offer LLM as judge evals using OpenAI models. We have prebuilt Correctness, System Prompt Obedeience, and User response sentiment metrics that you can use, but we also offer a way for you to define your own judging criteria inside the dashboard.
+
+❗ You must provide your own api key if you want to use this feature, and can do so by setting the OPENAI_API_KEY environment variable, or just placing it in a .env in the same directory that you run `subl server` in.
 
 
 ## Server support

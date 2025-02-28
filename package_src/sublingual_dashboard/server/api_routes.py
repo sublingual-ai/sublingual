@@ -294,7 +294,7 @@ def chat():
         data = request.json
         messages = data.get("messages", [])
         
-        response_text = chat_with_messages(messages)
+        response_text = chat_with_messages(messages, model="gpt-4o")
         return jsonify({
             "message": response_text
         })

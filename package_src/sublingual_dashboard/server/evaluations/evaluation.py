@@ -24,7 +24,7 @@ def initialize_client(env_file):
         )
         return None
 
-def chat_with_messages(messages: List[Dict[str, str]], model: str = "gpt-4") -> str:
+def chat_with_messages(messages: List[Dict[str, str]], model: str = "gpt-4o-mini") -> str:
     """Send messages to the chat model and return the response."""
     if not client:
         raise ValueError("OpenAI client not initialized")

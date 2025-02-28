@@ -7,7 +7,7 @@ import { LLMHeader } from "@/components/LLMHeader";
 import { LLMInteraction } from "@/components/LLMInteraction";
 import { formatTimestamp } from "@/utils/metrics";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface SidePaneProps {
     run: LLMRun;
@@ -29,6 +29,19 @@ export function SidePane({
     sessionRuns
 }: SidePaneProps) {
     const [isEvaluating, setIsEvaluating] = useState(false);
+    const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+    
+    // Track the current run to prevent closing when a new run is selected
+    useEffect(() => {
+        if (run) {
+            const runId = `${run.timestamp}-${run.response?.model || ''}`;
+            // Only call onClose if we're switching from one run to another
+            if (currentRunId && currentRunId !== runId) {
+                // Don't close, we're just changing runs
+            }
+            setCurrentRunId(runId);
+        }
+    }, [run]);
     
     const handleEvaluate = async () => {
         setIsEvaluating(true);

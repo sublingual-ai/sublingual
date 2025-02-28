@@ -676,10 +676,10 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 	const handleRowClick = (item: LLMRun | SessionRow) => {
 		if ('runs' in item) {
-			setSelectedSession(selectedSession?.sessionId === item.sessionId ? null : item);
+			setSelectedSession(item);
 			setSelectedRun(null);
 		} else {
-			setSelectedRun(selectedRun?.timestamp === item.timestamp ? null : item);
+			setSelectedRun(item);
 			setSelectedSession(null);
 		}
 	};

@@ -47,6 +47,7 @@ export interface SpreadsheetColumn {
     width: number;
     getValue: (item: any) => string | number;
     align?: 'left' | 'center' | 'right';
+    renderCell?: (item: any) => React.ReactNode;
 }
 
 export interface SpreadsheetProps {
@@ -55,5 +56,11 @@ export interface SpreadsheetProps {
     onRowClick: (item: any) => void;
     selectedItem: any | null;
     onColumnResize: (columnId: string, newWidth: number) => void;
-    onFilter?: (filter: Filter) => void;
+    onFilter?: (filter: {
+        field: string;
+        value: any[];
+        operator: 'in' | 'clear';
+        runIds: string[];
+    }) => void;
+    isItemStaged: (item: any) => boolean;
 } 

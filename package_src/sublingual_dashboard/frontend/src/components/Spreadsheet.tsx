@@ -8,14 +8,7 @@ import { Button } from "@/components/ui/button";
 import { LLMRun } from "@/types/logs";
 import { getRunId } from "@/utils/metrics";
 
-export function Spreadsheet({ 
-    columns, 
-    data, 
-    onRowClick, 
-    selectedItem, 
-    onColumnResize,
-    onFilter
-}: SpreadsheetProps) {
+export function Spreadsheet({ columns, data, onRowClick, selectedItem, onColumnResize, isItemStaged, onFilter }: SpreadsheetProps) {
     const resizingRef = useRef<{ columnId: string; startWidth: number; startX: number } | null>(null);
     const MIN_COLUMN_WIDTH = 100; // Minimum width to prevent text clipping
     
@@ -190,7 +183,8 @@ export function Spreadsheet({
                     <div 
                         key={rowIndex}
                         className={`grid hover:bg-[#F3F3F3] cursor-pointer ${
-                            selectedItem === item ? 'bg-[#E8F0FE]' : ''
+                            selectedItem === item ? 'bg-[#E8F0FE]' : 
+                            isItemStaged(item) ? 'bg-purple-50' : ''
                         }`}
                         style={{
                             gridTemplateColumns: columns.map(col => `${col.width}px`).join(' ')
@@ -198,12 +192,12 @@ export function Spreadsheet({
                         onClick={() => onRowClick(item)}
                     >
                         {columns.map((col, i) => {
-                            const value = col.getValue(item);
+                            const cellContent = col.renderCell ? col.renderCell(item) : col.getValue(item);
                             return (
                                 <div key={col.id} className={`px-3 py-[6px] text-xs text-gray-700 ${
                                     i !== columns.length - 1 ? 'border-r border-[#E2E3E3]' : ''
                                 } ${col.align ? `text-${col.align}` : ''} overflow-hidden text-ellipsis whitespace-nowrap`}>
-                                    {value}
+                                    {cellContent}
                                 </div>
                             );
                         })}

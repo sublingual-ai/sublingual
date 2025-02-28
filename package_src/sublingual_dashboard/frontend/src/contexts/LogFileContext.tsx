@@ -5,13 +5,14 @@ interface LogFileInfo {
   path: string;
 }
 
-interface LogFileContextType {
+export type LogFileContextType = {
   selectedFiles: string[];
   availableFiles: LogFileInfo[];
   toggleFile: (file: string) => void;
   selectAllFiles: () => void;
   deselectAllFiles: () => void;
-}
+  refreshFiles: () => Promise<void>;
+};
 
 const LogFileContext = createContext<LogFileContextType>({
   selectedFiles: [],
@@ -19,6 +20,7 @@ const LogFileContext = createContext<LogFileContextType>({
   toggleFile: () => {},
   selectAllFiles: () => {},
   deselectAllFiles: () => {},
+  refreshFiles: async () => {},
 });
 
 export const LogFileProvider = ({ children }: { children: React.ReactNode }) => {
@@ -58,6 +60,23 @@ export const LogFileProvider = ({ children }: { children: React.ReactNode }) => 
     setSelectedFiles([]);
   };
 
+  const refreshFiles = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/get_available_logs`);
+      if (response.ok) {
+        const files = await response.json();
+        const filesWithCounts = await Promise.all(files.map(async (file) => {
+          return {
+            path: file,
+          };
+        }));
+        setAvailableFiles(filesWithCounts);
+      }
+    } catch (error) {
+      console.error('Failed to refresh files:', error);
+    }
+  };
+
   return (
     <LogFileContext.Provider value={{
       selectedFiles,
@@ -65,6 +84,7 @@ export const LogFileProvider = ({ children }: { children: React.ReactNode }) => 
       toggleFile,
       selectAllFiles,
       deselectAllFiles,
+      refreshFiles,
     }}>
       {children}
     </LogFileContext.Provider>

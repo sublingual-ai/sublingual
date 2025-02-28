@@ -35,7 +35,7 @@ The coolest thing? You don't have to change any of your code!
 ## 🪄 How does it work?
 We automatically patch the OpenAI/Anthropic client to log all LLM calls and responses, then analyze the runtime code to extract the prompt template that you used as well. All of this so you don't have to change any of your code. When you don't want to log, you can just run your script as usual without `subl`, and the patch will not be applied or affect your code at all.
 
-Adding the `subl` command will trigger all python subprocesses, on initialization, to patch the LLM client classes to log calls and scan the runtime stack frames for info. By doing so, it can automatically (try to) find prompt templates and track server sessions.
+Adding `subl` before a command will trigger all python subprocesses spawned by this command to, on initialization, patch the LLM client classes to log calls and scan the runtime stack frames for info. By doing so, it can automatically (try to) find prompt templates and track server sessions.
     
 
 ## Supported LLM Providers and Frameworks

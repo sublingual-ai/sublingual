@@ -58,17 +58,20 @@ export function MetricsSummary({ filteredRuns, evaluations, selectedCriteria, me
     return (
         <div className="grid grid-cols-1 gap-3">
             {metricsData.map(metric => (
-                <div key={metric.criteria} className="flex items-center gap-4">
-                    <div className="w-40 text-sm text-gray-600">
+                <div key={metric.criteria} className="flex items-center">
+                    <div className="w-1/3 pr-4 text-sm text-gray-600">
                         {metrics[metric.criteria].name}
                     </div>
-                    <div className="flex-1">
+                    <div className="w-2/3">
                         <div className="flex justify-between text-sm mb-1">
                             <span className="text-primary-600 font-medium">
-                                {metric.isBoolean ?
-                                    `${metric.yesCount} Yes, ${metric.noCount} No` :
-                                    `${metric.averageScore.toFixed(1)}`
-                                }
+                                {metric.gradedRuns > 0 ? (
+                                    metric.isBoolean ?
+                                        `${metric.yesCount} Yes, ${metric.noCount} No` :
+                                        `${metric.averageScore.toFixed(1)}`
+                                ) : (
+                                    "No data yet"
+                                )}
                             </span>
                             <span className="text-gray-500">
                                 {metric.gradedRuns}/{metric.totalRuns} graded

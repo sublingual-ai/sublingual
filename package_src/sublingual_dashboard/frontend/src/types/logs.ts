@@ -67,6 +67,8 @@ export interface LLMRun {
     model: string;
     usage: {
       total_tokens: number;
+      prompt_tokens: number;
+      completion_tokens: number;
       completion_ms?: number;
     };
     choices: Choice[];
@@ -117,6 +119,8 @@ export interface HierarchyData {
 export interface Filter {
   field: string;
   value: any;
+  operator?: 'in' | 'clear' | string;
+  runIds?: string[];
 }
 
 export interface FilterOption {

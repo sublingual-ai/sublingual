@@ -718,12 +718,36 @@ export function LogFilesSidebar() {
     availableFiles, 
     toggleFile, 
     selectAllFiles, 
-    deselectAllFiles 
+    deselectAllFiles,
+    refreshFiles
   } = useLogFile();
+  
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  // Filter files based on search query
+  const filteredFiles = React.useMemo(() => {
+    if (!searchQuery.trim()) return availableFiles;
+    
+    const query = searchQuery.toLowerCase();
+    return availableFiles.filter(file => {
+      const fileName = getFileName(file.path).toLowerCase();
+      return fileName.includes(query);
+    });
+  }, [availableFiles, searchQuery]);
 
   function getFileName(path: string): string {
     return path.split('/').pop() || path;
   }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshFiles();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div className="w-64 border-r bg-gray-50/40 flex flex-col">
@@ -733,13 +757,17 @@ export function LogFilesSidebar() {
             type="text"
             placeholder="Search logs..."
             className="h-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
           <Button
             variant="ghost"
             size="sm"
             className="px-2"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
           >
-            <RefreshCcw className="h-4 w-4" />
+            <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
         <div className="flex gap-2">
@@ -769,19 +797,25 @@ export function LogFilesSidebar() {
       
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
-          {availableFiles.map(file => (
-            <button
-              key={file.path}
-              className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
-                selectedFiles.includes(file.path) 
-                  ? 'bg-primary-50 text-primary-900' 
-                  : 'hover:bg-gray-100'
-              }`}
-              onClick={() => toggleFile(file.path)}
-            >
-              <div className="text-sm truncate">{getFileName(file.path)}</div>
-            </button>
-          ))}
+          {filteredFiles.length > 0 ? (
+            filteredFiles.map(file => (
+              <button
+                key={file.path}
+                className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+                  selectedFiles.includes(file.path) 
+                    ? 'bg-primary-50 text-primary-900' 
+                    : 'hover:bg-gray-100'
+                }`}
+                onClick={() => toggleFile(file.path)}
+              >
+                <div className="text-sm truncate">{getFileName(file.path)}</div>
+              </button>
+            ))
+          ) : (
+            <div className="text-center py-4 text-gray-500 text-sm">
+              {searchQuery ? "No matching log files found" : "No log files available"}
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

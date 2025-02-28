@@ -21,7 +21,6 @@ import { SessionsList } from "@/components/SessionsList";
 
 import { MetricsSummary } from "./MetricsSummary";
 import { AddMetricDialog } from "./AddMetricDialog";
-import { OverwriteConfirmationDialog } from "./OverwriteConfirmationDialog";
 import { SidePane } from "./SidePane";
 import { Spreadsheet } from "./Spreadsheet";
 import { getRunId, formatTimestamp, getPreviewText, groupRunsIntoSessions } from "@/utils/metrics";
@@ -70,13 +69,6 @@ interface EvaluationResponse {
 	existing_evaluations?: Record<string, string[]>;
 }
 
-interface ConfirmationDialogState {
-	isOpen: boolean;
-	existingEvals: Record<string, string[]>;
-	onConfirm: () => void;
-	onCancel: () => void;
-}
-
 type ViewMode = 'runs' | 'sessions';
 
 interface SpreadsheetColumn {
@@ -92,7 +84,8 @@ interface SpreadsheetProps {
 	data: any[];
 	onRowClick: (item: any) => void;
 	selectedItem: any | null;
-	onColumnResize: (columnId: string, event: React.MouseEvent) => void;
+	onColumnResize: (columnId: string, newWidth: number) => void;
+	onFilter?: (filter: Filter) => void;
 }
 
 interface SessionRow {
@@ -114,12 +107,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
 	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
 	const [viewMode, setViewMode] = useState<ViewMode>('runs');
-	const [confirmationDialog, setConfirmationDialog] = useState({
-		isOpen: false,
-		existingEvals: {} as Record<string, string[]>,
-		onConfirm: () => {},
-		onCancel: () => {}
-	});
 	const [columnWidths, setColumnWidths] = useState({
 		timestamp: 160,
 		message: 500,
@@ -127,6 +114,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		temp: 80,
 		metrics: {} as Record<string, number>
 	});
+	const [isEvaluatingAll, setIsEvaluatingAll] = useState(false);
 
 	const { toast } = useToast();
 
@@ -158,7 +146,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				const response = await fetch(`${API_BASE_URL}/evaluations`);
 				if (!response.ok) throw new Error('Failed to fetch evaluations');
 				const data = await response.json();
-				
+
 				const formattedEvals: Record<string, Evaluation[]> = {};
 				Object.entries(data).forEach(([runId, runEvals]: [string, Record<string, any>]) => {
 					formattedEvals[runId] = Object.entries(runEvals).map(([criteria, rating]) => ({
@@ -167,13 +155,13 @@ export function MetricsView({ runs }: MetricsViewProps) {
 						status: 'evaluated' as const
 					}));
 				});
-				
+
 				setEvaluations(formattedEvals);
 			} catch (error) {
 				console.error('Error fetching evaluations:', error);
 				toast({
 					variant: "destructive",
-					title: "Error", 
+					title: "Error",
 					description: "Failed to load existing evaluations",
 				});
 			}
@@ -182,24 +170,31 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		fetchExistingEvaluations();
 	}, []);
 
-	// Get filtered runs based on filters
+	// Update the filteredRuns useMemo to properly handle AND/OR logic
 	const filteredRuns = useMemo(() => {
+		if (filters.length === 0) return runs;
+
+		// Group filters by field
+		const filtersByField = filters.reduce((acc, filter) => {
+			if (!acc[filter.field]) {
+				acc[filter.field] = [];
+			}
+			acc[filter.field].push(filter);
+			return acc;
+		}, {} as Record<string, Filter[]>);
+
+		// Apply filters to runs
 		return runs.filter(run => {
-			return filters.every(filter => {
-				const values = Array.isArray(filter.value) ? filter.value : [filter.value];
-				switch (filter.field) {
-					case 'model':
-						return values.includes(run.response.model);
-					case 'temperature':
-						return values.includes(run.call_parameters.temperature);
-					case 'filename':
-						return values.includes(run.stack_info?.filename);
-					case 'output_tokens':
-						const tokenRange = Math.floor(run.usage.total_tokens / 100) * 100;
-						return values.includes(tokenRange);
-					default:
-						return true;
-				}
+			const runId = getRunId(run);
+
+			// Each field's filters are combined with OR logic
+			// All fields must match (AND logic between different fields)
+			return Object.values(filtersByField).every(fieldFilters => {
+				// If any filter in this field matches (OR logic), return true
+				return fieldFilters.some(filter => {
+					const runIds = filter.runIds || [];
+					return runIds.includes(runId);
+				});
 			});
 		});
 	}, [runs, filters]);
@@ -306,8 +301,8 @@ export function MetricsView({ runs }: MetricsViewProps) {
 							key={criteria}
 							variant="outline"
 							className={`text-xs ${evaluation?.status === 'evaluated' ? 'bg-primary-50 text-primary-700' :
-									evaluation?.status === 'evaluation_failed' ? 'bg-red-50 text-red-700' :
-										'text-gray-500'
+								evaluation?.status === 'evaluation_failed' ? 'bg-red-50 text-red-700' :
+									'text-gray-500'
 								}`}
 						>
 							{metrics[criteria].name}: {displayValue()}
@@ -378,7 +373,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					run_id: runId,
 					run: run,
 					criteria: criteriaToEvaluate,
-					check_existing: true
+					force: true
 				})
 			});
 
@@ -388,53 +383,22 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					toast({
 						variant: "destructive",
 						title: "OpenAI Client Error",
-						description: "Failed to initialize OpenAI client. Please ensure you have provided your API key in the .env file.",
+						description: "OpenAI api access is required to use evals. Please be sure to include OPENAI_API_KEY=sk... in the .env file, and restart the dashboard. ",
 					});
 				}
 				throw new Error('Evaluation request failed');
 			}
 
-			const data: EvaluationResponse = await response.json();
-			
-			if (data.existing_evaluations && Object.keys(data.existing_evaluations).length > 0) {
-				const confirmed = await new Promise<boolean>((resolve) => {
-					setConfirmationDialog({
-						isOpen: true,
-						existingEvals: data.existing_evaluations!,
-						onConfirm: () => resolve(true),
-						onCancel: () => resolve(false),
-					});
-				});
-
-				if (!confirmed) {
-					return;
-				}
-			}
-
-			const saveResponse = await fetch(`${API_BASE_URL}/evaluate`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					run_id: runId,
-					run: run,
-					criteria: criteriaToEvaluate,
-					force: true
-				})
-			});
-
-			if (!saveResponse.ok) throw new Error('Failed to save evaluations');
-			const saveData = await saveResponse.json();
+			const data = await response.json();
 
 			setEvaluations(prev => {
 				const currentEvals = prev[runId] || [];
 				const newEvals = criteriaToEvaluate.map(criteria => ({
 					criteria,
-					rating: saveData.scores[criteria] === "<NO_SCORE>" ? 0 : 
-						metrics[criteria].tool_type === 'bool' ? saveData.scores[criteria] === 'true' || saveData.scores[criteria] === true :
-						parseInt(saveData.scores[criteria], 10),
-					status: (saveData.scores[criteria] === "<NO_SCORE>" ? 'evaluation_failed' : 'evaluated') as EvaluationStatus
+					rating: data.scores[criteria] === "<NO_SCORE>" ? 0 :
+						metrics[criteria].tool_type === 'bool' ? data.scores[criteria] === 'true' || data.scores[criteria] === true :
+							parseInt(data.scores[criteria], 10),
+					status: (data.scores[criteria] === "<NO_SCORE>" ? 'evaluation_failed' : 'evaluated') as EvaluationStatus
 				}));
 
 				return {
@@ -482,47 +446,19 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			);
 		});
 
-		// Evaluate each filtered run
-		for (const run of runsToEvaluate) {
-			await handleAutoEvaluate(run);
+		setIsEvaluatingAll(true);
+		try {
+			// Evaluate each filtered run
+			for (const run of runsToEvaluate) {
+				await handleAutoEvaluate(run);
+			}
+		} finally {
+			// Add a small delay to ensure the loading state is visible
+			setTimeout(() => {
+				setIsEvaluatingAll(false);
+			}, 500);
 		}
 	};
-
-	const OverwriteConfirmationDialog = () => (
-		<AlertDialog 
-			open={confirmationDialog.isOpen} 
-			onOpenChange={(open) => {
-				if (!open) confirmationDialog.onCancel();
-			}}
-		>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Overwrite Existing Evaluations?</AlertDialogTitle>
-					<div className="space-y-2 text-sm text-muted-foreground">
-						<AlertDialogDescription>
-							The following criteria already have evaluations:
-						</AlertDialogDescription>
-						<ul className="list-disc list-inside">
-							{Object.entries(confirmationDialog.existingEvals).map(([criteria, runs]) => (
-								<li key={criteria}>
-									{metrics[criteria].name} ({runs.length} evaluation{runs.length !== 1 ? 's' : ''})
-								</li>
-							))}
-						</ul>
-						<AlertDialogDescription>
-							Do you want to overwrite these evaluations?
-						</AlertDialogDescription>
-					</div>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel onClick={confirmationDialog.onCancel}>Cancel</AlertDialogCancel>
-					<AlertDialogAction onClick={confirmationDialog.onConfirm}>
-						Yes, Overwrite
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
-	);
 
 	const handleColumnResize = (columnId: string, newWidth: number) => {
 		setColumnWidths(prev => {
@@ -574,7 +510,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			getValue: (run: LLMRun) => {
 				if (!run.stack_trace) return '-';
 				return run.stack_trace.map(frame => {
-					const filename = frame.filename.split('/').pop() || frame.filename;
+					const filename = frame.filename?.split('/').pop() || frame.filename || '';
 					return `${filename}:${frame.lineno}`;
 				}).join('::');
 			}
@@ -614,7 +550,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	const sessions = useMemo(() => groupRunsIntoSessions(filteredRuns), [filteredRuns]);
 
 	// Update columns to include metrics
-	const getMetricColumns = (): SpreadsheetColumn[] => 
+	const getMetricColumns = (): SpreadsheetColumn[] =>
 		selectedCriteria.map(criteria => ({
 			id: criteria,
 			name: metrics[criteria].name,
@@ -634,11 +570,11 @@ export function MetricsView({ runs }: MetricsViewProps) {
 						console.log('Session evaluation:', { runId, evaluation });
 						return evaluation;
 					}).filter(e => e?.status === 'evaluated');
-					
+
 					console.log('Session evaluations:', sessionEvals);
 
 					if (sessionEvals.length === 0) return '-';
-					
+
 					// Average the ratings
 					const avg = sessionEvals.reduce((sum, e) => sum + (typeof e?.rating === 'number' ? e.rating : 0), 0) / sessionEvals.length;
 					return `${Math.round(avg)}%`;
@@ -646,9 +582,9 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					const runId = getRunId(item);
 					const evaluation = evaluations[runId]?.find(e => e.criteria === criteria);
 					console.log('Run evaluation:', { runId, evaluation });
-					
+
 					if (!evaluation || evaluation.status !== 'evaluated') return '-';
-					
+
 					return metrics[criteria].tool_type === 'bool'
 						? (evaluation.rating ? 'Yes' : 'No')
 						: `${evaluation.rating}${metrics[criteria].tool_type === 'int' ? '%' : ''}`;
@@ -661,18 +597,77 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			...col,
 			width: (columnWidths[col.id as keyof typeof columnWidths] as number) || col.width
 		})) : sessionColumns;
-		
+
 		return [...baseColumns, ...getMetricColumns()];
 	}, [viewMode, selectedCriteria, metrics, columnWidths, runColumns, sessionColumns]);
 
 	const handleRowClick = (item: LLMRun | SessionRow) => {
 		if ('runs' in item) {
-			setSelectedSession(selectedSession?.sessionId === item.sessionId ? null : item);
+			setSelectedSession(item);
 			setSelectedRun(null);
 		} else {
-			setSelectedRun(selectedRun?.timestamp === item.timestamp ? null : item);
+			setSelectedRun(item);
 			setSelectedSession(null);
 		}
+	};
+
+	// Update the handleFilter function to store runIds in the filter
+	const handleFilter = (filter: Filter) => {
+		if (filter.operator === 'clear') {
+			// Remove filter for this field
+			setFilters(prev => prev.filter(f => f.field !== filter.field));
+		} else if (filter.operator === 'in') {
+			// Add or update filter with runIds
+			setFilters(prev => {
+				const existingFilterIndex = prev.findIndex(f => f.field === filter.field);
+				if (existingFilterIndex >= 0) {
+					const newFilters = [...prev];
+					newFilters[existingFilterIndex] = filter;
+					return newFilters;
+				}
+				return [...prev, filter];
+			});
+		}
+	};
+
+	const ActiveFilters = ({ filters, onRemove }: { filters: Filter[], onRemove: (field: string) => void }) => {
+		if (filters.length === 0) return null;
+
+		return (
+			<div className="p-2 border-b border-gray-200">
+				<div className="flex flex-wrap gap-2 items-center">
+					<span className="text-xs font-medium text-gray-500">Active filters:</span>
+					{filters.map((filter, index) => {
+						const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+						return (
+							<div
+								key={index}
+								className="flex items-center gap-1 bg-primary-50 text-primary-700 text-xs px-2 py-1 rounded-md"
+							>
+								<span className="font-medium">{filter.field}:</span>
+								<span>{values.join(', ')}</span>
+								<button
+									onClick={() => onRemove(filter.field)}
+									className="ml-1 p-0.5 rounded-full hover:bg-primary-100"
+								>
+									<X className="h-3 w-3" />
+								</button>
+							</div>
+						);
+					})}
+					<button
+						onClick={() => filters.forEach(f => onRemove(f.field))}
+						className="text-xs text-gray-500 hover:text-gray-700 underline"
+					>
+						Clear all
+					</button>
+				</div>
+			</div>
+		);
+	};
+
+	const removeFilter = (field: string) => {
+		setFilters(prev => prev.filter(f => f.field !== field));
 	};
 
 	return (
@@ -681,21 +676,19 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				<div className="bg-white rounded-lg border border-gray-100 p-2">
 					<div className="flex gap-2">
 						<button
-							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-								viewMode === 'runs' 
-									? 'bg-primary-50 text-primary-900' 
-									: 'text-gray-600 hover:bg-gray-50'
-							}`}
+							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${viewMode === 'runs'
+								? 'bg-primary-50 text-primary-900'
+								: 'text-gray-600 hover:bg-gray-50'
+								}`}
 							onClick={() => setViewMode('runs')}
 						>
 							Run View
 						</button>
 						<button
-							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-								viewMode === 'sessions' 
-									? 'bg-primary-50 text-primary-900' 
-									: 'text-gray-600 hover:bg-gray-50'
-							}`}
+							className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${viewMode === 'sessions'
+								? 'bg-primary-50 text-primary-900'
+								: 'text-gray-600 hover:bg-gray-50'
+								}`}
 							onClick={() => setViewMode('sessions')}
 						>
 							Session View
@@ -704,7 +697,6 @@ export function MetricsView({ runs }: MetricsViewProps) {
 				</div>
 			</div>
 
-			<OverwriteConfirmationDialog />
 			{isLoading ? (
 				<div className="flex-1 flex items-center justify-center">
 					<Loader2 className="w-8 h-8 animate-spin text-primary-600" />
@@ -718,7 +710,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 								<div className="p-4">
 									<div className="flex justify-between items-center mb-2">
 										<label className="text-sm font-medium text-gray-700">
-											Evaluation Criteria
+											Select Evaluation Metrics
 										</label>
 										<ErrorBoundary>
 											<AddMetricDialog onMetricAdded={() => {
@@ -758,9 +750,16 @@ export function MetricsView({ runs }: MetricsViewProps) {
 												size="sm"
 												className="flex items-center gap-2"
 												onClick={handleEvaluateAll}
+												disabled={isEvaluatingAll || selectedCriteria.length === 0}
 											>
-												<Calculator className="w-4 h-4" />
-												<span className="text-xs">Evaluate All</span>
+												{isEvaluatingAll ? (
+													<Loader2 className="w-4 h-4 animate-spin" />
+												) : (
+													<Calculator className="w-4 h-4" />
+												)}
+												<span className="text-xs">
+													{isEvaluatingAll ? "Evaluating..." : "Evaluate metrics on ALL entries"}
+												</span>
 											</Button>
 										</div>
 										<ErrorBoundary>
@@ -778,7 +777,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 							<div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-fade-in">
 								<div className="flex justify-between items-center mb-2">
 									<label className="text-sm font-medium text-gray-700">
-										Evaluation Criteria
+										Select Evaluation Metrics
 									</label>
 									<ErrorBoundary>
 										<AddMetricDialog onMetricAdded={() => {
@@ -816,22 +815,14 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					{/* Main Content Box */}
 					<div className="bg-white rounded-lg border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
 						<ErrorBoundary>
-							<div className="border-b border-gray-200 p-4 flex-none">
-								<RunsFilter
-									filterOptions={getFilterOptions}
-									filters={filters}
-									onFilterChange={setFilters}
-								/>
-							</div>
-						</ErrorBoundary>
-
-						<ErrorBoundary>
+							<ActiveFilters filters={filters} onRemove={removeFilter} />
 							<Spreadsheet
 								columns={currentColumns}
 								data={viewMode === 'runs' ? filteredRuns : sessions}
 								onRowClick={handleRowClick}
 								selectedItem={viewMode === 'runs' ? selectedRun : selectedSession}
 								onColumnResize={handleColumnResize}
+								onFilter={handleFilter}
 							/>
 						</ErrorBoundary>
 					</div>
@@ -842,7 +833,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 							<SidePane
 								run={selectedRun || (selectedSession?.runs[0] ?? null)}
 								onClose={() => viewMode === 'runs' ? setSelectedRun(null) : setSelectedSession(null)}
-								evaluations={selectedRun 
+								evaluations={selectedRun
 									? (evaluations[getRunId(selectedRun)] || [])
 									: (selectedSession?.runs.flatMap(run => evaluations[getRunId(run)] || []) || [])
 								}

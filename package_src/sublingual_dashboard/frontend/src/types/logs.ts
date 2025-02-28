@@ -119,6 +119,8 @@ export interface HierarchyData {
 export interface Filter {
   field: string;
   value: any;
+  operator?: 'in' | 'clear' | string;
+  runIds?: string[];
 }
 
 export interface FilterOption {

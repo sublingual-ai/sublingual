@@ -1,4 +1,5 @@
 import { LLMRun, Message } from "./logs";
+import { Filter } from "@/types/logs";
 
 export type EvaluationCriteria = string;
 
@@ -54,4 +55,5 @@ export interface SpreadsheetProps {
     onRowClick: (item: any) => void;
     selectedItem: any | null;
     onColumnResize: (columnId: string, newWidth: number) => void;
+    onFilter?: (filter: Filter) => void;
 } 

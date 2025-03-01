@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="subl",
-    version="0.1.10",
+    version="0.1.11",
     author="Matthew Tang and Dylan Bowman",
     author_email="founders@sublingual.ai",
     description="No-code LLM production app evals.",

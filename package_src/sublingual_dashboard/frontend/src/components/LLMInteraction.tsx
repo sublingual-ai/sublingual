@@ -270,6 +270,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
 
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
   const [selectedContent, setSelectedContent] = useState<string | null>(null);
+  const [formatStrings, setFormatStrings] = useState<Record<number, string>>({});
 
   const handleShowGrammar = (msgIndex: number) => {
     if (!hasGrammar(run)) return;
@@ -290,6 +291,13 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           ...prev,
           [msgIndex]: tree
         }));
+
+        if (grammarResult.content.type === 'Format' && grammarResult.content.type === 'Format') {
+          setFormatStrings(prev => ({
+            ...prev,
+            [msgIndex]: grammarResult.content.base.value
+          }));
+        }
       }
     }
   };
@@ -452,7 +460,15 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                   </div>
                   <div className="text-sm whitespace-pre-wrap break-words mt-2">
                     {grammarTrees[msgIndex] ? (
-                      <GrammarTree node={grammarTrees[msgIndex]} />
+                      <>
+                        {formatStrings[msgIndex] && (
+                          <div className="mb-3 p-3 bg-blue-50 rounded-md">
+                            <div className="text-xs font-medium text-blue-700 mb-1">Format String:</div>
+                            <div className="font-mono text-sm whitespace-pre-wrap">{formatStrings[msgIndex]}</div>
+                          </div>
+                        )}
+                        <GrammarTree node={grammarTrees[msgIndex]} />
+                      </>
                     ) : (
                       renderContent(msg.content, msg)
                     )}

@@ -498,7 +498,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		const runsToEvaluate = filteredRuns.filter(run => {
 			const runId = getRunId(run);
 			const isStaged = stagedItems.runs.has(runId) || 
-				stagedItems.sessions.has(sessions.find(s => s.runs.includes(run))?.sessionId || '';
+				stagedItems.sessions.has(sessions.find(s => s.runs.includes(run))?.sessionId || '');
 			
 			if (!isStaged) return false;
 

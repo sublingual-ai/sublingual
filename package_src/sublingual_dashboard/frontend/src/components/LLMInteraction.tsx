@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Bot, User, Wrench, Code2 } from "lucide-react";
-import { Message, LLMRun, ToolCall } from "@/types/logs";
+import { Message, LLMRun, ToolCall, Choice } from "@/types/logs";
 import React, { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,17 @@ import { formatElapsedTime } from "@/utils/format";
 import { formatTimestamp } from "@/utils/metrics";
 import ErrorBoundary from './ErrorBoundary';
 
+interface SimpleLLMRun {
+    messages: Array<{role: string, content: string}>;
+    response: {role: string, content: string};
+}
+
+interface LLMRunWithGrammar extends LLMRun {
+    grammar_result: any;
+}
+
 interface LLMInteractionProps {
-  run: LLMRun | null;
+    run: LLMRun | SimpleLLMRun;
 }
 
 interface FullMessagePopupProps {
@@ -201,247 +210,293 @@ const isValidGrammar = (grammarResult: any) => {
     ['Format', 'Literal', 'Var', 'InferredVar', 'Concat'].includes(grammarResult.content.type);
 };
 
+interface SimpleResponse {
+    role: string;
+    content: string;
+}
+
+const isSimpleResponse = (response: any): response is SimpleResponse => 
+    'content' in response && 'role' in response;
+
+interface LLMResponse {
+    model: string;
+    usage: { total_tokens: number };
+    choices: Choice[];
+}
+
+const isLLMResponse = (response: any): response is LLMResponse =>
+    'choices' in response && 'model' in response;
+
+// Type guard for runs with grammar
+const hasGrammar = (run: LLMRun | SimpleLLMRun): run is LLMRunWithGrammar => 
+    'grammar_result' in run;
+
 export function LLMInteraction({ run }: LLMInteractionProps) {
-  const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
-  const [selectedContent, setSelectedContent] = useState<string | null>(null);
-
-  if (!run) return null;
-
-  const handleShowGrammar = (msgIndex: number) => {
-    if (run.grammar_result?.[msgIndex]) {
-      if (grammarTrees[msgIndex]) {
-        setGrammarTrees(prev => {
-          const newTrees = { ...prev };
-          delete newTrees[msgIndex];
-          return newTrees;
-        });
-        return;
-      }
-
-      const grammarResult = run.grammar_result[msgIndex];
-      if (grammarResult.content) {
-        const tree = parseGrammarFormat(grammarResult.content);
-        setGrammarTrees(prev => ({
-          ...prev,
-          [msgIndex]: tree
-        }));
-      }
+    // Early return if run is missing
+    if (!run) {
+        console.warn('LLMInteraction: Missing run');
+        return null;
     }
-  };
 
-  // Helper function to extract all tool calls for a message
-  const getToolCalls = (msg: Message, msgIndex: number) => {
-    // Tool calls directly in the message
-    const messageToolCalls = msg.tool_calls || [];
+    // Ensure messages is an array with the correct type
+    const messages = Array.isArray(run.messages) ? run.messages as Array<Message & {tool_call_id?: string}> : [];
 
-    // Tool calls in the response - show them with the user message that triggered them
-    const responseToolCalls = msg.role === 'user' && msgIndex === run.messages.length - 1
-      ? (run.response?.choices?.[0]?.message?.tool_calls || [])
-      : [];
-
-    return [...messageToolCalls, ...responseToolCalls];
-  };
-
-  // Update renderContent to use the new component
-  const renderContent = (content: any, msg: Message) => {
-    if (!content) return null;
-
-    if (Array.isArray(content)) {
-      return content.map((block, index) => {
-        if (block.type === 'text') {
-          return (
-            <div key={index}>
-              {block.text && <TruncatedContent content={block.text} />}
-            </div>
-          );
-        } else if (block.type === 'image_url') {
-          return (
-            <div key={index} className="mt-2 p-2 bg-gray-100 rounded text-gray-600 text-sm">
-              [Image content]
-            </div>
-          );
-        } else {
-          // For other types of blocks, display as formatted JSON
-          return (
-            <div key={index} className="font-mono text-sm">
-              <ObjectTree data={block} />
-            </div>
-          );
+    // Safely get response text
+    const responseText = (() => {
+        if (!run.response) return '';
+        
+        if (isSimpleResponse(run.response)) {
+            return run.response.content || '';
         }
-      });
-    }
+        
+        if (isLLMResponse(run.response)) {
+            return run.response.choices?.[0]?.message?.content || '';
+        }
+        
+        return '';
+    })();
 
-    // If content is a string
-    if (typeof content === 'string') {
-      return (
-        <div>
-          <TruncatedContent content={content} />
-        </div>
-      );
-    }
+    // Only show advanced features if we have a full run
+    const showGrammar = hasGrammar(run) ? run.grammar_result : null;
+    const showDuration = hasGrammar(run) ? run.duration_ms : null;
 
-    // If content is an object
-    if (typeof content === 'object' && content !== null) {
-      return (
-        <div className="font-mono text-sm">
-          <ObjectTree data={content} />
-        </div>
-      );
-    }
+    const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
+    const [selectedContent, setSelectedContent] = useState<string | null>(null);
 
-    // Fallback for other types
-    return <div>{String(content)}</div>;
-  };
+    const handleShowGrammar = (msgIndex: number) => {
+        if (!hasGrammar(run)) return;
+        if (run.grammar_result?.[msgIndex]) {
+            if (grammarTrees[msgIndex]) {
+                setGrammarTrees(prev => {
+                    const newTrees = { ...prev };
+                    delete newTrees[msgIndex];
+                    return newTrees;
+                });
+                return;
+            }
 
-  return (
-    <ErrorBoundary>
-      <div className="space-y-2 relative">
-        {selectedContent && (
-          <FullMessagePopup
-            content={selectedContent}
-            onClose={() => setSelectedContent(null)}
-          />
-        )}
-        <div className="space-y-2">
-          {run.messages?.map((msg, msgIndex) => {
-            const allToolCalls = getToolCalls(msg, msgIndex);
-            const isLastMessage = msgIndex === run.messages.length - 1;
-            const hasResponse = isLastMessage && (run.response?.choices?.[0]?.message?.tool_calls?.length > 0 || run.response_texts?.length > 0);
+            const grammarResult = run.grammar_result[msgIndex];
+            if (grammarResult.content) {
+                const tree = parseGrammarFormat(grammarResult.content);
+                setGrammarTrees(prev => ({
+                    ...prev,
+                    [msgIndex]: tree
+                }));
+            }
+        }
+    };
 
-            return (
-              <React.Fragment key={msgIndex}>
-                <div className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
-                  }`}>
-                  <div className="flex items-center gap-2 justify-between">
-                    <div className="flex items-center gap-2">
-                      {msg.role === 'assistant' ? (
-                        <>
-                          <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                          <span className="text-xs text-primary-600">Assistant</span>
-                        </>
-                      ) : msg.role === 'system' ? (
-                        <>
-                          <Wrench size={16} className="text-gray-600 flex-shrink-0" />
-                          <span className="text-xs text-gray-600">System</span>
-                        </>
-                      ) : msg.role === 'tool' ? (
-                        <>
-                          <Wrench size={16} className="text-blue-600 flex-shrink-0" />
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-blue-600">Tool</span>
-                            {msg.tool_call_id && (
-                              <Badge variant="outline" className="text-xs">
-                                ID: {msg.tool_call_id}
-                              </Badge>
-                            )}
-                          </div>
-                        </>
-                      ) : msg.role === 'user' ? (
-                        <>
-                          <User size={16} className="text-gray-600 flex-shrink-0" />
-                          <span className="text-xs text-gray-600">User</span>
-                        </>
-                      ) : (
-                        <>
-                          <User size={16} className="text-gray-600 flex-shrink-0" />
-                          <span className="text-xs text-gray-600">{msg.role}</span>
-                        </>
-                      )}
+    // Helper function to safely get tool calls
+    const getToolCalls = (msg: Message, msgIndex: number): ToolCall[] => {
+        if (!msg) return [];
+        
+        const messageToolCalls = msg.tool_calls || [];
+        const responseToolCalls = msg.role === 'user' && msgIndex === messages.length - 1
+            ? getResponseToolCalls()
+            : [];
+            
+        return [...messageToolCalls, ...responseToolCalls];
+    };
 
-                      {/* Add duration_ms display for the last message */}
-                      {isLastMessage && run.duration_ms && (
-                        <>
-                          <span className="text-gray-300">•</span>
-                          <span className="text-xs text-gray-600">
-                            {formatElapsedTime(run.duration_ms)}
-                          </span>
-                        </>
-                      )}
-                    </div>
+    // Helper function to get tool calls safely
+    const getResponseToolCalls = (): ToolCall[] => {
+        if (!run.response) return [];
+        if (!isLLMResponse(run.response)) return [];
+        return run.response.choices?.[0]?.message?.tool_calls || [];
+    };
 
-                    {run.grammar_result?.[msgIndex] &&
-                      isValidGrammar(run.grammar_result[msgIndex]) && (
-                        <Button
-                          variant={grammarTrees[msgIndex] ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-6 px-2"
-                          onClick={() => handleShowGrammar(msgIndex)}
-                        >
-                          <Code2 size={14} className="mr-1" />
-                          <span className="text-xs">
-                            {grammarTrees[msgIndex] ? "Hide Prompt Template" : "Show Prompt Template"}
-                          </span>
-                        </Button>
-                      )}
-                  </div>
-                  <div className="text-sm whitespace-pre-wrap break-words mt-2">
-                    {grammarTrees[msgIndex] ? (
-                      <GrammarTree node={grammarTrees[msgIndex]} />
-                    ) : (
-                      renderContent(msg.content, msg)
-                    )}
-                  </div>
-                </div>
+    // Update renderContent to use the new component
+    const renderContent = (content: any, msg: Message) => {
+        if (!content) return null;
 
-                {/* Show tool calls from the message itself */}
-                {msg.tool_calls && msg.tool_calls.length > 0 && (
-                  <div className="ml-6 space-y-2">
-                    {msg.tool_calls.map((toolCall, index) => (
-                      <div key={index}>
-                        <Badge variant="outline" className="mb-2">
-                          {msg.role === 'assistant' ? 'Assistant Tool Call' : 'Tool Call'} [{index + 1}]
-                        </Badge>
-                        <ToolCallDisplay toolCall={toolCall} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Show response box with tool calls and/or response texts */}
-                {hasResponse && (
-                  <>
-                    {/* Response box for response texts */}
-                    {run.response_texts && run.response_texts.length > 0 && (
-                      <div className="flex flex-col p-3 rounded-lg bg-primary-50">
-                        <div className="flex items-center gap-2">
-                          <Bot size={16} className="text-primary-600 flex-shrink-0" />
-                          <span className="text-xs text-primary-600">Response</span>
+        if (Array.isArray(content)) {
+            return content.map((block, index) => {
+                if (block.type === 'text') {
+                    return (
+                        <div key={index}>
+                            {block.text && <TruncatedContent content={block.text} />}
                         </div>
+                    );
+                } else if (block.type === 'image_url') {
+                    return (
+                        <div key={index} className="mt-2 p-2 bg-gray-100 rounded text-gray-600 text-sm">
+                            [Image content]
+                        </div>
+                    );
+                } else {
+                    // For other types of blocks, display as formatted JSON
+                    return (
+                        <div key={index} className="font-mono text-sm">
+                            <ObjectTree data={block} />
+                        </div>
+                    );
+                }
+            });
+        }
 
-                        {/* Show response texts */}
-                        {run.response_texts.map((responseText, index) => (
-                          <div
-                            key={index}
-                            className={`text-sm whitespace-pre-wrap break-words mt-2 ${responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
-                              }`}
-                            onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
-                          >
-                            {responseText && <TruncatedContent content={responseText} />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Show tool calls from the response */}
-                    {run.response?.choices?.[0]?.message?.tool_calls && (
-                      <div className="ml-6 space-y-2">
-                        {run.response.choices[0].message.tool_calls.map((toolCall, index) => (
-                          <div key={index}>
-                            <Badge variant="outline" className="mb-2">
-                              Response Tool Call [{index + 1}]
-                            </Badge>
-                            <ToolCallDisplay toolCall={toolCall} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </React.Fragment>
+        // If content is a string
+        if (typeof content === 'string') {
+            return (
+                <div>
+                    <TruncatedContent content={content} />
+                </div>
             );
-          })}
-        </div>
-      </div>
-    </ErrorBoundary>
-  );
+        }
+
+        // If content is an object
+        if (typeof content === 'object' && content !== null) {
+            return (
+                <div className="font-mono text-sm">
+                    <ObjectTree data={content} />
+                </div>
+            );
+        }
+
+        // Fallback for other types
+        return <div>{String(content)}</div>;
+    };
+
+    return (
+        <ErrorBoundary>
+            <div className="space-y-2 relative">
+                {selectedContent && (
+                    <FullMessagePopup
+                        content={selectedContent}
+                        onClose={() => setSelectedContent(null)}
+                    />
+                )}
+                <div className="space-y-2">
+                    {messages.map((msg, msgIndex) => {
+                        if (!msg) return null;  // Skip null messages
+                        
+                        const allToolCalls = getToolCalls(msg, msgIndex);
+                        const isLastMessage = msgIndex === messages.length - 1;
+                        const hasResponse = isLastMessage && (
+                            (isLLMResponse(run.response) && 
+                             run.response.choices?.[0]?.message?.tool_calls?.length > 0) || 
+                            responseText.length > 0
+                        );
+
+                        return (
+                            <React.Fragment key={msgIndex}>
+                                <div className={`flex flex-col p-3 rounded-lg ${
+                                    msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
+                                }`}>
+                                    <div className="flex items-center gap-2 justify-between">
+                                        <div className="flex items-center gap-2">
+                                            {msg.role === 'assistant' ? (
+                                                <>
+                                                    <Bot size={16} className="text-primary-600 flex-shrink-0" />
+                                                    <span className="text-xs text-primary-600">Assistant</span>
+                                                </>
+                                            ) : msg.role === 'system' ? (
+                                                <>
+                                                    <Wrench size={16} className="text-gray-600 flex-shrink-0" />
+                                                    <span className="text-xs text-gray-600">System</span>
+                                                </>
+                                            ) : msg.role === 'tool' ? (
+                                                <>
+                                                    <Wrench size={16} className="text-blue-600 flex-shrink-0" />
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-blue-600">Tool</span>
+                                                        {msg.tool_call_id && (
+                                                            <Badge variant="outline" className="text-xs">
+                                                                ID: {msg.tool_call_id}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            ) : msg.role === 'user' ? (
+                                                <>
+                                                    <User size={16} className="text-gray-600 flex-shrink-0" />
+                                                    <span className="text-xs text-gray-600">User</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <User size={16} className="text-gray-600 flex-shrink-0" />
+                                                    <span className="text-xs text-gray-600">{msg.role}</span>
+                                                </>
+                                            )}
+
+                                            {/* Add duration_ms display for the last message */}
+                                            {isLastMessage && hasGrammar(run) && run.duration_ms && (
+                                                <>
+                                                    <span className="text-gray-300">•</span>
+                                                    <span className="text-xs text-gray-600">
+                                                        {formatElapsedTime(run.duration_ms)}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* Grammar button */}
+                                        {hasGrammar(run) && run.grammar_result?.[msgIndex] &&
+                                            isValidGrammar(run.grammar_result[msgIndex]) && (
+                                            <Button
+                                                variant={grammarTrees[msgIndex] ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className="h-6 px-2"
+                                                onClick={() => handleShowGrammar(msgIndex)}
+                                            >
+                                                <Code2 size={14} className="mr-1" />
+                                                <span className="text-xs">
+                                                    {grammarTrees[msgIndex] ? "Hide Prompt Template" : "Show Prompt Template"}
+                                                </span>
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <div className="text-sm whitespace-pre-wrap break-words mt-2">
+                                        {grammarTrees[msgIndex] ? (
+                                            <GrammarTree node={grammarTrees[msgIndex]} />
+                                        ) : (
+                                            renderContent(msg.content, msg)
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Show tool calls from the message itself */}
+                                {allToolCalls.length > 0 && (
+                                    <div className="ml-6 space-y-2">
+                                        {allToolCalls.map((toolCall, index) => (
+                                            <div key={index}>
+                                                <Badge variant="outline" className="mb-2">
+                                                    {msg.role === 'assistant' ? 'Assistant Tool Call' : 'Tool Call'} [{index + 1}]
+                                                </Badge>
+                                                <ToolCallDisplay toolCall={toolCall} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Show response box with tool calls and/or response texts */}
+                                {hasResponse && (
+                                    <>
+                                        {responseText && (
+                                            <div className="text-sm whitespace-pre-wrap break-words mt-2">
+                                                {responseText}
+                                            </div>
+                                        )}
+
+                                        {isLLMResponse(run.response) && 
+                                         run.response.choices?.[0]?.message?.tool_calls?.length > 0 && (
+                                            <div className="ml-6 space-y-2">
+                                                {run.response.choices[0].message.tool_calls.map((toolCall, index) => (
+                                                    <div key={index}>
+                                                        <Badge variant="outline" className="mb-2">
+                                                            Response Tool Call [{index + 1}]
+                                                        </Badge>
+                                                        <ToolCallDisplay toolCall={toolCall} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
+            </div>
+        </ErrorBoundary>
+    );
 } 

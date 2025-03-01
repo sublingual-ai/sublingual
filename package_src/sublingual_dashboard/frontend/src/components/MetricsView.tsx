@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { LLMRun, Message } from "@/types/logs";
-import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X } from "lucide-react";
+import { ChevronDown, Calculator, Loader2, ChevronRight, Minus, X, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { API_BASE_URL } from '@/config';
@@ -18,6 +18,8 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SessionsList } from "@/components/SessionsList";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useNavigate } from "react-router-dom";
 
 import { MetricsSummary } from "./MetricsSummary";
 import { AddMetricDialog } from "./AddMetricDialog";
@@ -25,6 +27,7 @@ import { SidePane } from "./SidePane";
 import { Spreadsheet } from "./Spreadsheet";
 import { getRunId, formatTimestamp, getPreviewText, groupRunsIntoSessions } from "@/utils/metrics";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useMetrics } from "@/contexts/MetricsContext";
 
 interface MetricsViewProps {
 	runs: LLMRun[];
@@ -77,6 +80,7 @@ interface SpreadsheetColumn {
 	width: number;
 	getValue: (item: any) => string | number;
 	align?: 'left' | 'center' | 'right';
+	renderCell?: (item: any) => React.ReactNode;
 }
 
 interface SpreadsheetProps {
@@ -84,8 +88,9 @@ interface SpreadsheetProps {
 	data: any[];
 	onRowClick: (item: any) => void;
 	selectedItem: any | null;
-	onColumnResize: (columnId: string, newWidth: number) => void;
 	onFilter?: (filter: Filter) => void;
+	onColumnResize: (columnId: string, event: React.MouseEvent) => void;
+	isItemStaged: (item: any) => boolean;
 }
 
 interface SessionRow {
@@ -97,16 +102,20 @@ interface SessionRow {
 	totalTokens: number;
 }
 
+interface StagedItems {
+	runs: Set<string>;  // Set of run IDs
+	sessions: Set<string>;  // Set of session IDs
+}
+
 export function MetricsView({ runs }: MetricsViewProps) {
+	const { stagedItems, setStagedItems, viewMode, setViewMode, selectedCriteria, setSelectedCriteria } = useMetrics();
 	const [isLoading, setIsLoading] = useState(false);
-	const [selectedCriteria, setSelectedCriteria] = useState<string[]>([]);
 	const [evaluations, setEvaluations] = useState<Record<string, Evaluation[]>>({});
 	const [loadingStates, setLoadingStates] = useState<LoadingState>({});
 	const [filters, setFilters] = useState<Filter[]>([]);
 	const [metrics, setMetrics] = useState<Metrics>({});
 	const [selectedRun, setSelectedRun] = useState<LLMRun | null>(null);
 	const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
-	const [viewMode, setViewMode] = useState<ViewMode>('runs');
 	const [columnWidths, setColumnWidths] = useState({
 		timestamp: 160,
 		message: 500,
@@ -117,6 +126,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	const [isEvaluatingAll, setIsEvaluatingAll] = useState(false);
 
 	const { toast } = useToast();
+	const navigate = useNavigate();
 
 	// Fetch metrics on mount
 	useEffect(() => {
@@ -222,7 +232,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 	}, [runs]);
 
 	const handleCriteriaChange = (value: string) => {
-		setSelectedCriteria(prev => {
+		setSelectedCriteria((prev: string[]) => {
 			if (prev.includes(value)) {
 				return prev.filter(c => c !== value);
 			}
@@ -434,10 +444,64 @@ export function MetricsView({ runs }: MetricsViewProps) {
 		}
 	};
 
+	const getItemId = (item: LLMRun | SessionRow): string => {
+		if ('runs' in item) {
+			return item.sessionId;
+		}
+		return getRunId(item);
+	};
+
+	const isItemStaged = (item: LLMRun | SessionRow): boolean => {
+		const id = getItemId(item);
+		return 'runs' in item 
+			? stagedItems.sessions.has(id)
+			: stagedItems.runs.has(id);
+	};
+
+	const toggleItemStaged = (item: LLMRun | SessionRow) => {
+		const id = getItemId(item);
+		setStagedItems(prev => {
+			const newStaged = { ...prev };
+			const targetSet = 'runs' in item ? 'sessions' : 'runs';
+			
+			if (isItemStaged(item)) {
+				newStaged[targetSet].delete(id);
+			} else {
+				newStaged[targetSet].add(id);
+			}
+			
+			return newStaged;
+		});
+	};
+
+	const toggleAllStaged = () => {
+		const currentData = viewMode === 'runs' ? filteredRuns : sessions;
+		const allStaged = currentData.every(item => isItemStaged(item));
+		
+		setStagedItems(prev => {
+			const newStaged = { ...prev };
+			const targetSet = viewMode === 'runs' ? 'runs' : 'sessions';
+			
+			if (allStaged) {
+				newStaged[targetSet].clear();
+			} else {
+				currentData.forEach(item => {
+					newStaged[targetSet].add(getItemId(item));
+				});
+			}
+			
+			return newStaged;
+		});
+	};
+
 	const handleEvaluateAll = async () => {
-		// Get all filtered runs that have unevaluated criteria
 		const runsToEvaluate = filteredRuns.filter(run => {
 			const runId = getRunId(run);
+			const isStaged = stagedItems.runs.has(runId) || 
+				stagedItems.sessions.has(sessions.find(s => s.runs.includes(run))?.sessionId || '';
+			
+			if (!isStaged) return false;
+
 			const existingEvals = evaluations[runId] || [];
 			return selectedCriteria.some(criteria =>
 				!existingEvals.some(evaluation =>
@@ -592,14 +656,29 @@ export function MetricsView({ runs }: MetricsViewProps) {
 			}
 		}));
 
+	const checkboxColumn: SpreadsheetColumn = {
+		id: 'checkbox',
+		name: 'Staged',
+		width: 70,
+		getValue: () => '',
+		renderCell: (item: LLMRun | SessionRow) => (
+			<div className="flex justify-center w-full" onClick={(e) => e.stopPropagation()}>
+				<Checkbox
+					checked={isItemStaged(item)}
+					onCheckedChange={() => toggleItemStaged(item)}
+				/>
+			</div>
+		)
+	};
+
 	const currentColumns = useMemo(() => {
 		const baseColumns = viewMode === 'runs' ? runColumns.map(col => ({
 			...col,
 			width: (columnWidths[col.id as keyof typeof columnWidths] as number) || col.width
 		})) : sessionColumns;
-
-		return [...baseColumns, ...getMetricColumns()];
-	}, [viewMode, selectedCriteria, metrics, columnWidths, runColumns, sessionColumns]);
+		
+		return [checkboxColumn, ...baseColumns, ...getMetricColumns()];
+	}, [viewMode, selectedCriteria, metrics, columnWidths, runColumns, sessionColumns, stagedItems]);
 
 	const handleRowClick = (item: LLMRun | SessionRow) => {
 		if ('runs' in item) {
@@ -668,6 +747,19 @@ export function MetricsView({ runs }: MetricsViewProps) {
 
 	const removeFilter = (field: string) => {
 		setFilters(prev => prev.filter(f => f.field !== field));
+	};
+
+	const getTotalTokens = () => {
+		const currentData = viewMode === 'runs' ? filteredRuns : sessions;
+		const stagedData = currentData.filter(item => isItemStaged(item));
+		
+		return stagedData.reduce((total, item) => {
+			if ('runs' in item) { // SessionRow
+				return total + item.totalTokens;
+			} else { // LLMRun
+				return total + (item.usage?.total_tokens || 0);
+			}
+		}, 0);
 	};
 
 	return (
@@ -815,7 +907,83 @@ export function MetricsView({ runs }: MetricsViewProps) {
 					{/* Main Content Box */}
 					<div className="bg-white rounded-lg border border-gray-100 flex flex-col flex-1 min-h-0 animate-fade-in">
 						<ErrorBoundary>
-							<ActiveFilters filters={filters} onRemove={removeFilter} />
+							<div className="border-b border-gray-200 p-4 flex-none">
+								<div className="flex items-center justify-between mb-4">
+									<div className="flex items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={toggleAllStaged}
+										>
+											{(viewMode === 'runs' ? filteredRuns : sessions).every(item => isItemStaged(item))
+												? 'Unselect All'
+												: 'Select All'
+											}
+										</Button>
+										<span className="text-sm text-gray-600">
+											{stagedItems[viewMode].size} items staged ({getTotalTokens().toLocaleString()} tokens)
+										</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2"
+											onClick={handleEvaluateAll}
+											disabled={stagedItems[viewMode].size === 0 || selectedCriteria.length === 0}
+										>
+											<Calculator className="w-4 h-4" />
+											<span className="text-xs">Evaluate Staged</span>
+										</Button>
+										<Button
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2"
+											onClick={() => {
+												// First get all the staged runs
+												const stagedRunsData = [...stagedItems.runs].map(runId => {
+													const run = filteredRuns.find(r => getRunId(r) === runId);
+													if (!run) return null;
+													return {
+														id: runId,
+														messages: run.messages,
+														response: {
+															role: 'assistant',
+															content: run.response_texts[0] || ''
+														},
+														usage: {
+															total_tokens: run.usage?.total_tokens || 0
+														}
+													};
+												}).filter(Boolean);
+
+												navigate('/chat', { 
+													state: { 
+														stagedItems: {
+															runs: stagedRunsData,
+															sessions: stagedItems.sessions
+														},
+														viewMode,
+														selectedCriteria 
+													} 
+												});
+											}}
+											disabled={stagedItems[viewMode].size === 0}
+										>
+											<MessageSquare className="w-4 h-4" />
+											<span className="text-xs">Chat with Data</span>
+										</Button>
+									</div>
+								</div>
+								<RunsFilter
+									filterOptions={getFilterOptions}
+									filters={filters}
+									onFilterChange={setFilters}
+								/>
+							</div>
+						</ErrorBoundary>
+
+						<ErrorBoundary>
 							<Spreadsheet
 								columns={currentColumns}
 								data={viewMode === 'runs' ? filteredRuns : sessions}
@@ -823,6 +991,7 @@ export function MetricsView({ runs }: MetricsViewProps) {
 								selectedItem={viewMode === 'runs' ? selectedRun : selectedSession}
 								onColumnResize={handleColumnResize}
 								onFilter={handleFilter}
+								isItemStaged={isItemStaged}
 							/>
 						</ErrorBoundary>
 					</div>

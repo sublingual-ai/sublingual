@@ -288,3 +288,38 @@ def get_evaluations():
         return jsonify(evals)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@router.route("/delete_logs", methods=["POST"])
+def delete_logs():
+    data = request.json
+    file_paths = data.get("file_paths", [])
+
+    print(f"Deleting files: {file_paths}")
+    if not file_paths:
+        return jsonify({"error": "No file paths provided"}), 400
+
+    results = {
+        "success": [],
+        "failed": []
+    }
+
+    for file_path in file_paths:
+        try:
+            if not os.path.exists(file_path):
+                results["failed"].append({"path": file_path, "reason": "File not found"})
+                continue
+
+            os.remove(file_path)
+            results["success"].append(file_path)
+        except Exception as e:
+            results["failed"].append({"path": file_path, "reason": str(e)})
+
+    if not results["failed"]:
+        return jsonify({"success": True, "deleted": results["success"]})
+    else:
+        return jsonify({
+            "partial_success": True,
+            "deleted": results["success"],
+            "failed": results["failed"]
+        }), 207  # 207 Multi-Status

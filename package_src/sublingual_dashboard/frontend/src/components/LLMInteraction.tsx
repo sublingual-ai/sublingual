@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Bot, User, Wrench, Code2 } from "lucide-react";
-import { Message, LLMRun, ToolCall } from "@/types/logs";
+import { Message, LLMRun, ToolCall, Choice } from "@/types/logs";
 import React, { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,17 @@ import { formatElapsedTime } from "@/utils/format";
 import { formatTimestamp } from "@/utils/metrics";
 import ErrorBoundary from './ErrorBoundary';
 
+interface SimpleLLMRun {
+  messages: Array<{ role: string, content: string }>;
+  response: { role: string, content: string };
+}
+
+interface LLMRunWithGrammar extends LLMRun {
+  grammar_result: any;
+}
+
 interface LLMInteractionProps {
-  run: LLMRun | null;
+  run: LLMRun | SimpleLLMRun;
 }
 
 interface FullMessagePopupProps {
@@ -201,14 +210,70 @@ const isValidGrammar = (grammarResult: any) => {
     ['Format', 'Literal', 'Var', 'InferredVar', 'Concat'].includes(grammarResult.content.type);
 };
 
+interface SimpleResponse {
+  role: string;
+  content: string;
+}
+
+const isSimpleResponse = (response: any): response is SimpleResponse =>
+  'content' in response && 'role' in response;
+
+interface LLMResponse {
+  model: string;
+  usage: { total_tokens: number };
+  choices: Choice[];
+}
+
+const isLLMResponse = (response: any): response is LLMResponse =>
+  'choices' in response && 'model' in response;
+
+// Type guard for runs with grammar
+const hasGrammar = (run: LLMRun | SimpleLLMRun): run is LLMRunWithGrammar =>
+  'grammar_result' in run;
+
 export function LLMInteraction({ run }: LLMInteractionProps) {
+  // Early return if run is missing
+  if (!run) {
+    console.warn('LLMInteraction: Missing run');
+    return null;
+  }
+
+  // Ensure messages is an array with the correct type
+  const messages = Array.isArray(run.messages) ? run.messages as Array<Message & { tool_call_id?: string }> : [];
+
+  // Safely get response text
+  const responseText = (() => {
+    if (!run.response) return '';
+
+    if (isSimpleResponse(run.response)) {
+      return run.response.content || '';
+    }
+
+    if (isLLMResponse(run.response)) {
+      // Access response_texts directly from run, not from response
+      if ('response_texts' in run && run.response_texts?.length > 0) {
+        return run.response_texts[0];
+      }
+      return run.response.choices?.[0]?.message?.content || '';
+    }
+
+    if (typeof run.response === 'string') {
+      return run.response;
+    }
+
+    return '';
+  })();
+
+  // Only show advanced features if we have a full run
+  const showGrammar = hasGrammar(run) ? run.grammar_result : null;
+  const showDuration = hasGrammar(run) ? run.duration_ms : null;
+
   const [grammarTrees, setGrammarTrees] = useState<Record<number, GrammarNode>>({});
   const [selectedContent, setSelectedContent] = useState<string | null>(null);
   const [formatStrings, setFormatStrings] = useState<Record<number, string>>({});
 
-  if (!run) return null;
-
   const handleShowGrammar = (msgIndex: number) => {
+    if (!hasGrammar(run)) return;
     if (run.grammar_result?.[msgIndex]) {
       if (grammarTrees[msgIndex]) {
         setGrammarTrees(prev => {
@@ -237,17 +302,23 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     }
   };
 
-  // Helper function to extract all tool calls for a message
-  const getToolCalls = (msg: Message, msgIndex: number) => {
-    // Tool calls directly in the message
-    const messageToolCalls = msg.tool_calls || [];
+  // Helper function to safely get tool calls
+  const getToolCalls = (msg: Message, msgIndex: number): ToolCall[] => {
+    if (!msg) return [];
 
-    // Tool calls in the response - show them with the user message that triggered them
-    const responseToolCalls = msg.role === 'user' && msgIndex === run.messages.length - 1
-      ? (run.response?.choices?.[0]?.message?.tool_calls || [])
+    const messageToolCalls = msg.tool_calls || [];
+    const responseToolCalls = msg.role === 'user' && msgIndex === messages.length - 1
+      ? getResponseToolCalls()
       : [];
 
     return [...messageToolCalls, ...responseToolCalls];
+  };
+
+  // Helper function to get tool calls safely
+  const getResponseToolCalls = (): ToolCall[] => {
+    if (!run.response) return [];
+    if (!isLLMResponse(run.response)) return [];
+    return run.response.choices?.[0]?.message?.tool_calls || [];
   };
 
   // Update renderContent to use the new component
@@ -269,7 +340,6 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
             </div>
           );
         } else {
-          // For other types of blocks, display as formatted JSON
           return (
             <div key={index} className="font-mono text-sm">
               <ObjectTree data={block} />
@@ -282,7 +352,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
     // If content is a string
     if (typeof content === 'string') {
       return (
-        <div>
+        <div className="whitespace-pre-wrap">
           <TruncatedContent content={content} />
         </div>
       );
@@ -311,15 +381,20 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
           />
         )}
         <div className="space-y-2">
-          {run.messages?.map((msg, msgIndex) => {
+          {messages.map((msg, msgIndex) => {
+            if (!msg) return null;  // Skip null messages
+
             const allToolCalls = getToolCalls(msg, msgIndex);
-            const isLastMessage = msgIndex === run.messages.length - 1;
-            const hasResponse = isLastMessage && (run.response?.choices?.[0]?.message?.tool_calls?.length > 0 || run.response_texts?.length > 0);
+            const isLastMessage = msgIndex === messages.length - 1;
+            const hasResponse = isLastMessage && (
+              (isLLMResponse(run.response) &&
+                run.response.choices?.[0]?.message?.tool_calls?.length > 0) ||
+              responseText.length > 0
+            );
 
             return (
               <React.Fragment key={msgIndex}>
-                <div className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'
-                  }`}>
+                <div className={`flex flex-col p-3 rounded-lg ${msg.role === 'assistant' ? 'bg-primary-50/50' : 'bg-gray-50'}`}>
                   <div className="flex items-center gap-2 justify-between">
                     <div className="flex items-center gap-2">
                       {msg.role === 'assistant' ? (
@@ -357,7 +432,7 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                       )}
 
                       {/* Add duration_ms display for the last message */}
-                      {isLastMessage && run.duration_ms && (
+                      {isLastMessage && hasGrammar(run) && run.duration_ms && (
                         <>
                           <span className="text-gray-300">•</span>
                           <span className="text-xs text-gray-600">
@@ -367,7 +442,8 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                       )}
                     </div>
 
-                    {run.grammar_result?.[msgIndex] &&
+                    {/* Grammar button */}
+                    {hasGrammar(run) && run.grammar_result?.[msgIndex] &&
                       isValidGrammar(run.grammar_result[msgIndex]) && (
                         <Button
                           variant={grammarTrees[msgIndex] ? "secondary" : "ghost"}
@@ -400,9 +476,9 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
                 </div>
 
                 {/* Show tool calls from the message itself */}
-                {msg.tool_calls && msg.tool_calls.length > 0 && (
+                {allToolCalls.length > 0 && (
                   <div className="ml-6 space-y-2">
-                    {msg.tool_calls.map((toolCall, index) => (
+                    {allToolCalls.map((toolCall, index) => (
                       <div key={index}>
                         <Badge variant="outline" className="mb-2">
                           {msg.role === 'assistant' ? 'Assistant Tool Call' : 'Tool Call'} [{index + 1}]
@@ -415,43 +491,33 @@ export function LLMInteraction({ run }: LLMInteractionProps) {
 
                 {/* Show response box with tool calls and/or response texts */}
                 {hasResponse && (
-                  <>
-                    {/* Response box for response texts */}
-                    {run.response_texts && run.response_texts.length > 0 && (
-                      <div className="flex flex-col p-3 rounded-lg bg-primary-50">
-                        <div className="flex items-center gap-2">
+                  <div>
+                    {responseText && (
+                      <div className="flex flex-col p-3 rounded-lg bg-primary-50/50 mt-2">
+                        <div className="flex items-center gap-2 mb-2">
                           <Bot size={16} className="text-primary-600 flex-shrink-0" />
                           <span className="text-xs text-primary-600">Response</span>
                         </div>
-
-                        {/* Show response texts */}
-                        {run.response_texts.map((responseText, index) => (
-                          <div
-                            key={index}
-                            className={`text-sm whitespace-pre-wrap break-words mt-2 ${responseText?.length > MESSAGE_TRUNCATE_LENGTH ? 'cursor-pointer' : ''
-                              }`}
-                            onClick={() => responseText?.length > MESSAGE_TRUNCATE_LENGTH && setSelectedContent(responseText)}
-                          >
-                            {responseText && <TruncatedContent content={responseText} />}
-                          </div>
-                        ))}
+                        <div className="text-sm whitespace-pre-wrap break-words">
+                          {responseText}
+                        </div>
                       </div>
                     )}
 
-                    {/* Show tool calls from the response */}
-                    {run.response?.choices?.[0]?.message?.tool_calls && (
-                      <div className="ml-6 space-y-2">
-                        {run.response.choices[0].message.tool_calls.map((toolCall, index) => (
-                          <div key={index}>
-                            <Badge variant="outline" className="mb-2">
-                              Response Tool Call [{index + 1}]
-                            </Badge>
-                            <ToolCallDisplay toolCall={toolCall} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                    {isLLMResponse(run.response) &&
+                      run.response.choices?.[0]?.message?.tool_calls?.length > 0 && (
+                        <div className="ml-6 space-y-2">
+                          {run.response.choices[0].message.tool_calls.map((toolCall, index) => (
+                            <div key={index}>
+                              <Badge variant="outline" className="mb-2">
+                                Response Tool Call [{index + 1}]
+                              </Badge>
+                              <ToolCallDisplay toolCall={toolCall} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
                 )}
               </React.Fragment>
             );

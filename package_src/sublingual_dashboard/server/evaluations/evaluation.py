@@ -24,6 +24,19 @@ def initialize_client(env_file):
         )
         return None
 
+def chat_with_messages(messages: List[Dict[str, str]], model: str = "gpt-4o-mini") -> str:
+    """Send messages to the chat model and return the response."""
+    if not client:
+        raise ValueError("OpenAI client not initialized")
+        
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.7
+    )
+    
+    return response.choices[0].message.content
+
 class Evaluation:
     system_prompt = dedent("""
     You are an expert evaluator of AI assistant responses.

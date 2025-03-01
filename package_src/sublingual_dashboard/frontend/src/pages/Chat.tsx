@@ -7,11 +7,20 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE_URL } from '@/config';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { LLMInteraction } from "@/components/LLMInteraction";
+import ReactMarkdown from 'react-markdown';
+
+interface Citation {
+    type: 'block';
+    id: string;
+    index: number;
+}
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
     content: string;
     id?: string;
+    citations?: Citation[];
 }
 
 interface RunData {
@@ -41,6 +50,32 @@ const getTotalTokens = (runs: StagedRun[]) => {
     }, 0);
 };
 
+// Create a new MessageInput component
+const MessageInput = ({ onSubmit }: { onSubmit: (message: string) => void }) => {
+    const [inputValue, setInputValue] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inputValue.trim()) return;
+        onSubmit(inputValue);
+        setInputValue('');
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+            <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1"
+            />
+            <Button type="submit">
+                <Send className="w-4 h-4" />
+            </Button>
+        </form>
+    );
+};
+
 export default function Chat() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -48,9 +83,9 @@ export default function Chat() {
     const { stagedItems = { runs: [], sessions: new Set<string>() } } = routerState;
     
     const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [expandedRuns, setExpandedRuns] = useState<string[]>([]);
+    const [expandedCitations, setExpandedCitations] = useState<string[]>([]);
 
     const stagedRuns = Array.isArray(stagedItems.runs) ? stagedItems.runs : [];
 
@@ -62,42 +97,40 @@ export default function Chat() {
         );
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim()) return;
-
-        const userMessage: Message = { role: 'user', content: input };
+    // Move handleSubmit logic here but keep input state in child component
+    const handleSubmit = async (message: string) => {
+        const userMessage: Message = { role: 'user', content: message };
         setMessages(prev => [...prev, userMessage]);
-        setInput('');
         setIsLoading(true);
 
         try {
             const runs = Array.isArray(stagedItems.runs) ? stagedItems.runs : [];
             
             // Update the staged messages mapping to use slugs
-            const stagedMessages = runs.map((run) => {
-                const conversation = [
-                    ...run.messages,
-                    run.response
-                ]
-                .filter(msg => msg && msg.content != null)
-                .map(msg => `${msg.role}: ${msg.content}`)
-                .join('\n');
-                
-                return {
-                    role: 'user' as const,
-                    content: conversation,
-                    id: run.id // Just use the existing ID
-                };
-            });
+            const stagedMessages = runs.flatMap((run) => [
+                ...run.messages.map(msg => ({
+                    role: msg.role as Message['role'],
+                    content: `[ID: ${run.id}] ${msg.content}`
+                })),
+                {
+                    role: run.response.role as Message['role'],
+                    content: `[ID: ${run.id}] ${run.response.content}`
+                }
+            ]).filter(msg => msg && msg.content != null);
             
             // Update system prompt to include citation instructions
             const systemPrompt = {
                 role: 'system' as const,
-                content: `You are an assistant helping a user navigate the logs from their LLM app. You will be provided all of the logs as "user" messages in the history. You can reference previous conversations using citations. Use <inline>[id]</inline> for inline citations or <block>[id]</block> for block citations. You must use this exact format. Only include the ID here--do not repeat the content of the cited item. Example: <block>b872e181-7241-49d7-b0d7-cff9314954d2</block>.`
+                content: `You are an assistant helping a user navigate the logs from their LLM app.
+                You will be provided all of the logs as "user" messages in the history.
+                You can reference previous conversations using block citations.
+                Use <block>id</block> to cite a conversation.
+                You must use this exact format. Only include the ID here--do not repeat the content of the cited item.
+                Cite things helpfully and tastefully.
+                Example: <block>run-123456789</block>.`,
             };
 
-            const allMessages = [systemPrompt, ...stagedMessages, systemPrompt, ...messages, userMessage];  // sysprompt twice xd
+            const allMessages = [systemPrompt, ...stagedMessages, systemPrompt, ...messages, userMessage];
 
             const response = await fetch(`${API_BASE_URL}/chatwith`, {
                 method: 'POST',
@@ -113,54 +146,49 @@ export default function Chat() {
             
             const data = await response.json();
             
-            // Process citations in the response
             let processedContent = data.message;
-            
-            // Extract all inline tag contents
-            const inlineMatches = processedContent.matchAll(/<inline>(.*?)<\/inline>/gs);
-            for (const match of inlineMatches) {
-                const fullMatch = match[0];
-                const content = match[1]?.trim();
-                console.log('Inline content found:', content);
-                
-                // Check if it's a valid citation format
-                const citationMatch = content.match(/\s*\[(.*?)\]\s*/);
-                if (citationMatch) {
-                    const id = citationMatch[1]?.trim();
-                    console.log('Valid inline citation ID:', id);
-                }
-                
-                processedContent = processedContent.replace(fullMatch, '');
-            }
+            const citations: Citation[] = [];
 
-            // Extract all block tag contents
+            // Process block citations for embedding
+            console.log('Processing content:', processedContent);
             const blockMatches = processedContent.matchAll(/<block>(.*?)<\/block>/gs);
             for (const match of blockMatches) {
                 const fullMatch = match[0];
                 const content = match[1]?.trim();
                 console.log('Block content found:', content);
                 
-                // Check if it's a valid citation format
-                const citationMatch = content.match(/\s*\[(.*?)\]\s*/);
-                if (citationMatch) {
-                    const id = citationMatch[1]?.trim();
-                    console.log('Valid block citation ID:', id);
-                }
+                // Replace block tags with bold markdown instead of removing
+                processedContent = processedContent.replace(fullMatch, `**${content}**`);
                 
-                processedContent = processedContent.replace(fullMatch, '');
+                // The content IS the ID
+                const id = content.trim();
+                console.log('Block citation ID:', id);
+                citations.push({
+                    type: 'block',
+                    id,
+                    index: match.index || 0
+                });
             }
 
-            // Clean up any remaining whitespace artifacts
+            console.log('Citations array:', citations);
+            console.log('Processed content before cleanup:', processedContent);
+
+            // Clean up whitespace
             processedContent = processedContent
-                .replace(/\s+/g, ' ')  // Collapse multiple spaces
-                .replace(/\s+\./g, '.') // Clean up spaces before periods
-                .replace(/\s+,/g, ',') // Clean up spaces before commas
+                .replace(/\s+/g, ' ')
                 .trim();
+
+            console.log('Final processed content:', processedContent);
+
+            console.log('Available staged runs before message creation:', stagedItems.runs);
 
             const botMessage: Message = { 
                 role: 'assistant', 
-                content: processedContent
+                content: processedContent,
+                citations: citations.length > 0 ? citations : undefined
             };
+
+            console.log('Bot message being set:', botMessage);
             setMessages(prev => [...prev, botMessage]);
         } catch (error) {
             console.error('Chat error:', error);
@@ -169,28 +197,70 @@ export default function Chat() {
         }
     };
 
-    // Update the message rendering to include IDs
-    const renderMessage = (message: Message, index: number) => (
-        <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-            <div
-                className={`max-w-[80%] rounded-lg px-4 py-1.5 ${
-                    message.role === 'user'
-                        ? 'bg-primary-500 text-white'
-                        : 'bg-gray-100 text-gray-900'
-                }`}
-            >
-                {message.content}
-                {message.id && (
-                    <div className="text-xs opacity-50 mt-1">
-                        ID: {message.id}
+    const renderCitedContent = (citation: Citation, stagedRuns: StagedRun[], totalCitations: number) => {
+        const run = stagedRuns.find(r => r.id === citation.id);
+        if (!run) return null;
+
+        const isExpanded = totalCitations === 1 || expandedCitations.includes(citation.id);
+        const previewText = getPreviewText(run);
+        
+        return (
+            <div className="mt-2">
+                {totalCitations > 1 && (
+                    <button 
+                        onClick={() => setExpandedCitations(prev => 
+                            isExpanded ? prev.filter(id => id !== citation.id) : [...prev, citation.id]
+                        )}
+                        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+                    >
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        <span className="font-medium">Citation {run.id}</span>
+                        <span className="text-gray-400">—</span>
+                        <span className="text-gray-500 truncate">{previewText}</span>
+                    </button>
+                )}
+                {isExpanded && (
+                    <div className="mt-2 border rounded-md overflow-hidden">
+                        <LLMInteraction run={run} />
                     </div>
                 )}
             </div>
-        </div>
-    );
+        );
+    };
+
+    const renderMessage = (message: Message, index: number, stagedRuns: StagedRun[]) => {
+        console.log('Rendering message:', message);
+        console.log('With citations:', message.citations);
+        
+        const totalCitations = message.citations?.length || 0;
+
+        return (
+            <div
+                key={index}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+                <div
+                    className={`max-w-[80%] rounded-lg px-4 py-1.5 ${
+                        message.role === 'user'
+                            ? 'bg-primary-500 text-white'
+                            : 'bg-gray-100 text-gray-900'
+                    }`}
+                >
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                    {message.citations?.map((citation, i) => (
+                        <div key={i}>
+                            {citation.type === 'block' && renderCitedContent(citation, stagedRuns, totalCitations)}
+                        </div>
+                    ))}
+                    {message.id && (
+                        <div className="text-xs opacity-50 mt-1">
+                            ID: {message.id}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <DashboardLayout showLogsSidebar={false}>
@@ -212,62 +282,43 @@ export default function Chat() {
                     <ScrollArea className="flex-1">
                         <table className="w-full">
                             <tbody className="divide-y divide-gray-100">
-                                {stagedRuns.map((run, index) => [
-                                    <tr
-                                        key={`${run.id || index}-row`}
-                                        className={`group hover:bg-gray-50 cursor-pointer ${
-                                            expandedRuns.includes(run.id) ? 'bg-gray-50' : ''
-                                        }`}
-                                        onClick={() => toggleRun(run.id)}
-                                    >
-                                        <td className="px-4 py-2">
-                                            <div className="flex items-center space-x-2">
-                                                {expandedRuns.includes(run.id) ? (
-                                                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                                                ) : (
-                                                    <ChevronRight className="w-4 h-4 text-gray-500" />
-                                                )}
-                                                <MessageSquare className="w-4 h-4 text-gray-500" />
-                                                <span className="text-sm font-medium text-gray-700">
-                                                    {getPreviewText(run)}
-                                                </span>
-                                            </div>
-                                            <div className="ml-10 mt-1">
-                                                <Badge variant="secondary" className="text-xs">
-                                                    {run.messages.length} messages
-                                                </Badge>
-                                            </div>
-                                        </td>
-                                    </tr>,
-                                    expandedRuns.includes(run.id) && (
-                                        <tr key={`${run.id || index}-details`}>
-                                            <td className="px-4 py-2 bg-gray-50">
-                                                <div className="ml-10 text-sm text-gray-600">
-                                                    {run.messages.map((msg, msgIndex) => (
-                                                        <div key={msgIndex} className="mb-2">
-                                                            <div className="font-medium text-xs text-gray-500 mb-1">
-                                                                {msg.role}:
-                                                            </div>
-                                                            <div className="pl-2 text-xs">
-                                                                {msg.content}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {run.response && (
-                                                        <div className="mb-2">
-                                                            <div className="font-medium text-xs text-gray-500 mb-1">
-                                                                response:
-                                                            </div>
-                                                            <div className="pl-2 text-xs">
-                                                                {run.response.content}
-                                                            </div>
-                                                        </div>
+                                {stagedRuns.map((run, index) => {
+                                    console.log('Staged run:', {
+                                        id: run.id,
+                                        messages: run.messages,
+                                        response: run.response,
+                                        fullRun: run
+                                    });
+                                    return [
+                                        <tr
+                                            key={`${run.id || index}-row`}
+                                            className={`hover:bg-gray-50 cursor-pointer ${
+                                                expandedRuns.includes(run.id) ? 'bg-gray-50' : ''
+                                            }`}
+                                            onClick={() => toggleRun(run.id)}
+                                        >
+                                            <td className="p-2">
+                                                <div className="flex items-center gap-2">
+                                                    {expandedRuns.includes(run.id) ? (
+                                                        <ChevronDown className="w-4 h-4" />
+                                                    ) : (
+                                                        <ChevronRight className="w-4 h-4" />
                                                     )}
+                                                    <span className="text-sm truncate">{getPreviewText(run)}</span>
                                                 </div>
                                             </td>
-                                        </tr>
-                                    )
-                                ])}
+                                        </tr>,
+                                        expandedRuns.includes(run.id) && run.messages && Array.isArray(run.messages) && (
+                                            <tr key={`${run.id || index}-content`}>
+                                                <td className="p-2">
+                                                    <div className="border rounded-md overflow-hidden">
+                                                        <LLMInteraction run={run} />
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    ];
+                                })}
                                 {stagedRuns.length === 0 && (
                                     <tr>
                                         <td className="px-4 py-8 text-center text-gray-500 text-sm">
@@ -298,7 +349,7 @@ export default function Chat() {
                     {/* Messages Area */}
                     <div className="flex-1 overflow-auto p-4">
                         <div className="max-w-4xl mx-auto w-full space-y-2">
-                            {messages.map((message, i) => renderMessage(message, i))}
+                            {messages.map((message, i) => renderMessage(message, i, stagedItems.runs))}
                             {isLoading && (
                                 <div className="flex justify-start">
                                     <div className="max-w-[80%] rounded-lg px-4 py-1.5 bg-gray-100">
@@ -316,17 +367,7 @@ export default function Chat() {
                     {/* Input Area */}
                     <div className="border-t p-4">
                         <div className="max-w-4xl mx-auto w-full">
-                            <form onSubmit={handleSubmit} className="flex gap-2">
-                                <Input
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Type a message..."
-                                    className="flex-1"
-                                />
-                                <Button type="submit">
-                                    <Send className="w-4 h-4" />
-                                </Button>
-                            </form>
+                            <MessageInput onSubmit={handleSubmit} />
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { LogFilesSidebar } from "@/components/ui/sidebar";
+import { LogFilesSidebar } from "@/components/LogFilesSidebar";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (

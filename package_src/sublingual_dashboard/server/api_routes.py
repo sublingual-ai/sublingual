@@ -299,11 +299,9 @@ def chat():
             "message": response_text
         })
     except ValueError as e:
-        print("ValueError:", str(e))
         return jsonify({
             "error": "OpenAI client not initialized",
             "details": str(e)
         }), 503
     except Exception as e:
-        print("Exception:", str(e))
         return jsonify({"error": str(e)}), 500

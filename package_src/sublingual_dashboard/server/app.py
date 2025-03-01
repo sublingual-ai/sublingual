@@ -15,9 +15,6 @@ CORS(app)
 
 app.register_blueprint(router, url_prefix="/api")
 
-# Add this debug print
-print("Registered routes:", [f"{rule.rule} {rule.methods}" for rule in app.url_map.iter_rules()])
-
 # Serve static files from frontend_build directory
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")

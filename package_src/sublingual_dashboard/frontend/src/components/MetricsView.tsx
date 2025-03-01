@@ -947,14 +947,20 @@ export function MetricsView({ runs }: MetricsViewProps) {
 													return {
 														id: runId,
 														messages: run.messages,
-														response: run.response.choices[0].message
+														response: {
+															role: 'assistant',
+															content: run.response_texts[0] || ''
+														},
+														usage: {
+															total_tokens: run.usage?.total_tokens || 0
+														}
 													};
-												}).filter(Boolean); // Remove any nulls
+												}).filter(Boolean);
 
 												navigate('/chat', { 
 													state: { 
 														stagedItems: {
-															runs: stagedRunsData, // Send the actual run data array
+															runs: stagedRunsData,
 															sessions: stagedItems.sessions
 														},
 														viewMode,

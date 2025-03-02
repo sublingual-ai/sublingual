@@ -22,6 +22,8 @@ Ask us any questions, suggest features, or see what everyone is building on our 
     subl server
     ```
 
+* logs will be written to ./.sublingual/logs under the same directory you launch `subl ...` in, so be sure to run `subl server` in the same directory or pass --project-dir flag
+
 ## 🤔 What is Sublingual? 
 Sublingual helps you log and analyze all of your LLM calls, including the prompt template, call parameters, responses, tool calls, and more.
 The coolest thing? You don't have to change any of your code!

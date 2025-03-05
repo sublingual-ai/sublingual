@@ -15,6 +15,17 @@ import { useLogs } from '@/hooks/useLogs';
 import { DashboardView } from "@/components/DashboardView";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import posthog from 'posthog-js'
+
+// Initialize PostHog with autocapture disabled
+posthog.init('phc_tv1AWx9A8bwDHPrpRX5l7ZUBDwyRSNP7R7aTtneb9Oq', {
+  api_host: 'https://app.posthog.com',
+  autocapture: false,
+  capture_pageview: false,
+  capture_pageleave: false,
+  disable_session_recording: true,
+  disable_persistence: true
+})
 
 type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics' | 'dashboard';
 
@@ -26,9 +37,11 @@ const FeedbackButton = () => {
   const handleSubmit = () => {
     if (!feedback.trim()) return;
     
-    console.log("Feedback submitted:", {
-      feedback,
-      contactInfo: contactInfo.trim() || 'Anonymous'
+    // Send to PostHog instead of console.log
+    posthog.capture('feedback_submitted', {
+      feedback_text: feedback,
+      contact_info: contactInfo.trim() || 'Anonymous',
+      timestamp: new Date().toISOString()
     });
     
     setFeedback("");

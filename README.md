@@ -77,3 +77,6 @@ subl flask run ...
 ## License
 
 MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Telemetry
+We collect very basic telemetry to understand how the product is being used. Currently we only collect how many people are downloading and running the package. You can opt out by setting the `NO_TELEMETRY` environment variable to 1.

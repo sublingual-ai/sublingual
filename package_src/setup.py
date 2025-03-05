@@ -30,5 +30,6 @@ setup(
         "dotenv",
         "psutil",
         "anthropic",
+        "posthog",
     ],
 )

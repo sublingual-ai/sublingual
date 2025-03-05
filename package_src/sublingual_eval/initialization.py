@@ -17,8 +17,8 @@ from sublingual_eval.logging.anthropic_logger import (
 )
 import os
 import sysconfig
-
-
+from posthog import Posthog
+import uuid
 PTH_TEXT = dedent(
     """
     try:
@@ -69,6 +69,22 @@ def init():
         if not os.path.exists(subl_logs_path):
             os.makedirs(subl_logs_path)
         print("\033[92m\033[94m[sublingual]\033[0m Logging enabled \033[92m✔\033[0m")
+        # Handle telemetry
+        try:
+            if os.getenv("NO_TELEMETRY", "0") != "1":
+                if not os.path.exists(os.path.join(os.getcwd(), ".sublingual", "uuid.txt")):
+                    with open(os.path.join(os.getcwd(), ".sublingual", "uuid.txt"), "w") as f:
+                        f.write(str(uuid.uuid4()))
+                with open(os.path.join(os.getcwd(), ".sublingual", "uuid.txt"), "r") as f:
+                    project_id = f.read()
+                posthog = Posthog(
+                    api_key="phc_tv1AWx9A8bwDHPrpRX5l7ZUBDwyRSNP7R7aTtneb9Oq",
+                    host='https://us.i.posthog.com',
+                )
+                posthog.capture(project_id, "sublingual_initialized")
+        except Exception as e:
+            print(f"\033[93m[sublingual] Warning:\033[0m Failed to capture telemetry: {e}")
+
 
     # Setup logging
     if os.getenv("SUBL_PATCH_OPENAI", "0") == "1":

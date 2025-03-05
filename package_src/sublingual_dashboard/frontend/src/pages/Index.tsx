@@ -5,7 +5,7 @@ import { SessionsList } from "@/components/SessionsList";
 import { CallHierarchy } from "@/components/CallHierarchy";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ListTree, GitBranch, Network, Hash, BarChart, LayoutDashboard, CheckSquare, Square } from "lucide-react";
+import { ListTree, GitBranch, Network, Hash, BarChart, LayoutDashboard, CheckSquare, Square, MessageCircle, X } from "lucide-react";
 import { LogFileProvider, useLogFile } from "@/contexts/LogFileContext";
 import { LLMRun, SessionRow } from "@/types/logs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,8 +13,100 @@ import { Badge } from "@/components/ui/badge";
 import { MetricsView } from "@/components/MetricsView";
 import { useLogs } from '@/hooks/useLogs';
 import { DashboardView } from "@/components/DashboardView";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 
 type ViewType = 'runs' | 'sessions' | 'trace' | 'metrics' | 'dashboard';
+
+const FeedbackButton = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [contactInfo, setContactInfo] = useState("");
+
+  const handleSubmit = () => {
+    if (!feedback.trim()) return;
+    
+    console.log("Feedback submitted:", {
+      feedback,
+      contactInfo: contactInfo.trim() || 'Anonymous'
+    });
+    
+    setFeedback("");
+    setContactInfo("");
+    setIsOpen(false);
+    toast.success("Thank you for your feedback!");
+  };
+
+  return (
+    <>
+      <Button
+        className="fixed bottom-4 right-4 rounded-full shadow-lg"
+        onClick={() => setIsOpen(true)}
+      >
+        <MessageCircle className="w-4 h-4 mr-2" />
+        Send Anonymous Feedback
+      </Button>
+
+      {isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 w-96 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Send Anonymous Feedback</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                  Your Feedback
+                </label>
+                <Textarea
+                  placeholder="Tell us what you think..."
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  className="min-h-[100px]"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                  Contact Info (Optional)
+                </label>
+                <Textarea
+                  placeholder="Email or other contact info if you'd like us to follow up"
+                  value={contactInfo}
+                  onChange={(e) => setContactInfo(e.target.value)}
+                  className="min-h-[60px]"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!feedback.trim()}
+              >
+                Send Anonymous Feedback
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 const Dashboard = () => {
   const [view, setView] = useState<ViewType>(() => {
@@ -143,6 +235,7 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+        <FeedbackButton />
       </div>
     </DashboardLayout>
   );
